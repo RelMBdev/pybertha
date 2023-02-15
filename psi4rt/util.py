@@ -6,6 +6,11 @@ from pkg_resources import parse_version
 
 import rtutil
 
+import tensorflow as tf
+from tensorflow.python.ops.numpy_ops import np_config
+np_config.enable_numpy_behavior()
+import tensorflow.experimental.numpy as tnp
+
 ##################################################################
 
 def set_input(fgeom):
@@ -27,29 +32,31 @@ def exp_opmat(mat,dt):
 
     #first find eigenvectors and eigenvalues of F mat
     try:
-       w,v=np.linalg.eigh(mat)
-    except np.linalg.LinAlgError:
-        print("Error in numpy.linalg.eigh of inputted matrix")
+       #w,v=np.linalg.eigh(mat)
+       w,v=tf.linalg.eigh(mat)
+    #except tnp.linalg.LinAlgError:
+    except InvalidArgumentError:
+        print("Error in tf.linalg.eigh of inputted matrix")
         return None
 
-    diag=np.exp(-1.j*w*dt)
+    diag=tnp.exp(-1.j*w*dt)
 
-    dmat=np.diagflat(diag)
+    dmat=tnp.diagflat(diag)
 
     # for a general matrix Diag = M^(-1) A M
     # M is v
     #try:
-    #   v_i=np.linalg.inv(v)
-    #except np.linalg.LinAlgError:
+    #   v_i=tnp.linalg.inv(v)
+    #except tnp.linalg.LinAlgError:
     #   return None
 
     # transform back
-    #tmp = np.matmul(dmat,v_i)
-    tmp = np.matmul(dmat,np.conjugate(v.T))
+    #tmp = tnp.matmul(dmat,v_i)
+    tmp = tnp.matmul(dmat,tnp.conjugate(v.T))
 
     #in an orthonrmal basis v_inv = v.H
 
-    mat_exp = np.matmul(v,tmp)
+    mat_exp = tnp.matmul(v,tmp)
 
     return mat_exp
 
@@ -57,10 +64,10 @@ def exp_opmat(mat,dt):
 
 def get_Fock(D, Hcore, I, f_type, basisset):
     # Build J,K matrices
-    J = np.einsum('pqrs,rs->pq', I, D)
+    J = tnp.einsum('pqrs,rs->pq', I, D)
     if (f_type=='hf'):
-        K = np.einsum('prqs,rs->pq', I, D)
-        F = Hcore + J*np.float_(2.0) - K
+        K = tnp.einsum('prqs,rs->pq', I, D)
+        F = Hcore + J*tnp.float_(2.0) - K
         Exc=0.0
         J_ene = 0.0
     else:
@@ -77,21 +84,22 @@ def get_Fock(D, Hcore, I, f_type, basisset):
         if not restricted:
             vname = "UV"
         potential=psi4.core.VBase.build(basisset,sup,vname)
-        Dm=psi4.core.Matrix.from_array(D.real)
+        #Dm=psi4.core.Matrix.from_array(D.real)
+        Dm=psi4.core.Matrix.from_array(tf.math.real(D))
         potential.initialize()
         potential.set_D([Dm])
         nbf=D.shape[0]
         V=psi4.core.Matrix(nbf,nbf)
         potential.compute_V([V])
         potential.finalize()
-        F = Hcore + J*np.float_(2.0) +V
+        F = Hcore + J*tnp.float_(2.0) +V.to_array()
         Exc= potential.quadrature_values()["FUNCTIONAL"]
         if sup.is_x_hybrid():
           alpha = sup.x_alpha()
-          K = np.einsum('prqs,rs->pq', I, D)
+          K = tnp.einsum('prqs,rs->pq', I, D)
           F += -alpha*K
-          Exc += -alpha*np.trace(np.matmul(D,K))
-        J_ene=2.00*np.trace(np.matmul(D,J))
+          Exc += -alpha*tnp.trace(tnp.matmul(D,K))
+        J_ene=2.00*tnp.trace(tnp.matmul(D,J))
     return J_ene,Exc,F
 
 ##################################################################
@@ -133,7 +141,7 @@ def mo_fock_mid_forwd_eval(D_ti,fock_mid_ti_backwd,i,delta_t,H,I,dipole,\
       if extpotin == None:
         extpot = 0
 
-    t_arg=np.float_(i)*np.float_(delta_t)
+    t_arg=tnp.float_(i)*tnp.float_(delta_t)
     
     func = rtutil.funcswitcher.get(imp_opts['imp_type'], lambda: rtutil.kick)
     
@@ -142,7 +150,7 @@ def mo_fock_mid_forwd_eval(D_ti,fock_mid_ti_backwd,i,delta_t,H,I,dipole,\
 
     #D_ti is in AO basis
     #transform in the MO ref basis
-    Dp_ti= np.matmul(C_inv,np.matmul(D_ti,np.conjugate(C_inv.T)))
+    Dp_ti= tnp.matmul(C_inv,tnp.matmul(D_ti,tnp.conjugate(C_inv.T)))
     
     k=1
     
@@ -151,34 +159,39 @@ def mo_fock_mid_forwd_eval(D_ti,fock_mid_ti_backwd,i,delta_t,H,I,dipole,\
     fock_ti_ao = fock_mtx - (dipole*pulse)
 
     #if i==0:
-    #    print('F(0) equal to F_ref: %s' % np.allclose(fock_ti_ao,fock_mid_ti_backwd))
+    #    print('F(0) equal to F_ref: %s' % tnp.allclose(fock_ti_ao,fock_mid_ti_backwd))
     
     #initialize dens_test !useless
-    dens_test=np.zeros(Dp_ti.shape)
+    dens_test=tnp.zeros(Dp_ti.shape)
 
     # set guess for initial fock matrix
-    fock_guess = None 
+    fock_guess = None
+    if tf.is_tensor(fock_mid_ti_backwd) is False:
+        fock_mid_ti_backwd=tf.convert_to_tensor(fock_mid_ti_backwd.to_array())
+    else:
+        None
     fock_guess = 2.00*( fock_ti_ao + extpot ) - fock_mid_ti_backwd
     #if i==0:
-    #   print('Fock_guess for i =0 is Fock_0: %s' % np.allclose(fock_guess,fock_ti_ao))
+    #   print('Fock_guess for i =0 is Fock_0: %s' % tnp.allclose(fock_guess,fock_ti_ao))
     #transform fock_guess in MO basis
     while True:
-        fockp_guess=np.matmul(np.conjugate(C.T),np.matmul(fock_guess,C))
+        fockp_guess=tnp.matmul(tnp.conjugate(C.T),tnp.matmul(fock_guess,C))
         u=exp_opmat(fockp_guess,delta_t)
         #u=scipy.linalg.expm(-1.j*fockp_guess*delta_t) ! alternative routine
-        test=np.matmul(u,np.conjugate(u.T))
-        #print('U is unitary? %s' % (np.allclose(test,np.eye(u.shape[0]))))
-        if (not np.allclose(test,np.eye(u.shape[0]))):
-            Id=np.eye(u.shape[0])
+        test=tnp.matmul(u,tnp.conjugate(u.T))
+        #print('U is unitary? %s' % (tnp.allclose(test,tnp.eye(u.shape[0]))))
+        if (not tnp.allclose(test,tnp.eye(u.shape[0]))):
+            Id=tnp.eye(u.shape[0])
             diff_u=test-Id
-            norm_diff=np.linalg.norm(diff_u,'fro')
+            #norm_diff=tnp.linalg.norm(diff_u,'fro')
+            norm_diff=tf.linalg.norm(diff_u,ord='fro', axis=(0,1))
             fout.write('fock_mid:U deviates from unitarity, |UU^-1 -I| %.8f' % norm_diff)
         #evolve Dp_ti using u and obtain Dp_ti_dt (i.e Dp(ti+dt)). u i s built from the guess fock
         #density in the orthonormal basis
-        tmpd=np.matmul(Dp_ti,np.conjugate(u.T))
-        Dp_ti_dt=np.matmul(u,tmpd)
+        tmpd=tnp.matmul(Dp_ti,tnp.conjugate(u.T))
+        Dp_ti_dt=tnp.matmul(u,tmpd)
         #backtrasform Dp_ti_dt
-        D_ti_dt=np.matmul(C,np.matmul(Dp_ti_dt,np.conjugate(C.T)))
+        D_ti_dt=tnp.matmul(C,tnp.matmul(Dp_ti_dt,tnp.conjugate(C.T)))
         #build the correspondig Fock : fock_ti+dt
         
         dum1,dum2,fock_mtx=get_Fock(D_ti_dt,H,I,f_type,basisset)
@@ -188,20 +201,22 @@ def mo_fock_mid_forwd_eval(D_ti,fock_mid_ti_backwd,i,delta_t,H,I,dipole,\
         fock_ti_dt_ao=fock_mtx -(dipole*pulse_dt)
         fock_inter= 0.5*fock_ti_ao + 0.5*fock_ti_dt_ao + extpot
         #update fock_guess
-        fock_guess=np.copy(fock_inter)
+        fock_guess=tnp.copy(fock_inter)
         if k >1:
         #test on the norm: compare the density at current step and previous step
         #calc frobenius of the difference D_ti_dt_mo_new-D_ti_dt_mo
             diff=D_ti_dt-dens_test
-            norm_f=np.linalg.norm(diff,'fro')
-            if norm_f<(1e-6):
-                tr_dt=np.trace(np.matmul(S,D_ti_dt))
+            #norm_f=tnp.linalg.norm(diff,'fro')
+            norm_f=tf.linalg.norm(diff,ord='fro', axis=(0,1))
+            if tf.math.real(norm_f)<(1e-6):
+                tr_dt=tnp.trace(tnp.matmul(S,D_ti_dt))
                 fout.write('converged after %i interpolations\n' % (k-1))
                 fout.write('i is: %d\n' % i)
                 fout.write('norm is: %.12f\n' % norm_f)
-                fout.write('Trace(D)(t+dt) : %.8f\n' % tr_dt.real)
+                #fout.write('Trace(D)(t+dt) : %.8f\n' % tr_dt.real)
+                fout.write('Trace(D)(t+dt) : %.8f\n' % tf.math.real(tr_dt))
                 break
-        dens_test=np.copy(D_ti_dt)
+        dens_test=tnp.copy(D_ti_dt)
         k+=1
         if k > 20:
          raise Exception("Numember of iterations exceeded (k>20)")
@@ -219,7 +234,7 @@ def dipoleanalysis(dipole,dmat,nocc,occlist,virtlist,debug=False,HL=False):
       a = nocc+1
       res = dipole[i-1,a-1]*dmat[a-1,i-1] + dipole[a-1,i-1]*dmat[i-1,a-1]
     else:
-      res = np.zeros(tot,dtype=np.complex128)
+      res = tnp.zeros(tot,dtype=tnp.complex128)
       count = 0
       for i in occlist:
         for j in virtlist:
@@ -235,7 +250,7 @@ def dipole_selection(dipole,ID,nocc,occlist,virtlist,odbg=sys.stderr,debug=False
     if debug:
        odbg.write("Selected occ. Mo: %s \n"% str(occlist))
        odbg.write("Selected virt. Mo: %s \n"% str(virtlist))
-    offdiag = np.zeros_like(dipole)
+    offdiag = tnp.zeros_like(dipole)
     #diag = numpy.diagonal(tmp)
     #diagonal = numpy.diagflat(diag)
     nvirt = dipole.shape[0]-nocc
@@ -248,7 +263,7 @@ def dipole_selection(dipole,ID,nocc,occlist,virtlist,odbg=sys.stderr,debug=False
       for b in virtlist:
         for j in  occlist:
           offdiag[b-1,j-1] = dipole[b-1,j-1]
-    offdiag=(offdiag+np.conjugate(offdiag.T))
+    offdiag=(offdiag+tnp.conjugate(offdiag.T))
     #offdiag+=diagonal
     res = offdiag
 
