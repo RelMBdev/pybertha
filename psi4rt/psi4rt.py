@@ -14,13 +14,9 @@ import numpy as np
 import json
 import pickle 
 from json import encoder
+import torch
 
-import tensorflow as tf
-from tensorflow.python.ops.numpy_ops import np_config
-np_config.enable_numpy_behavior()
-import tensorflow.experimental.numpy as tnp
-
-#os.environ['PYBERTHAROOT'] = "/projectsn/mp1009_1/motas/9_bomme/software/pybertha/"
+#os.environ['PYBERTHAROOT'] = "/projectsn/mp1009_1/motas/9_bomme/software/pybertha_t/"
 #os.environ['RTHOME'] = "/projectsn/mp1009_1/motas/9_bomme/software/pybertha/psi4rt"
 
 #sys.path.append("/projectsn/mp1009_1/motas/9_bomme/software/xcfun/build/lib/python")
@@ -32,26 +28,30 @@ sys.path.append(os.environ['PYBERTHA_MOD_PATH'])
 
 ##########################################################################################
 
-def vctto_tnpcmplxarray (realp, imagp):
+def vctto_npcmplxarray (realp, imagp):
 
-    list_REAL = tnp.float_(realp)
-    list_IMAG = tnp.float_(imagp)
+    list_REAL_ = np.float_(realp)
+    list_IMAG_ = np.float_(imagp)
+    list_REAL = torch.from_numpy(list_REAL_)
+    list_IMAG = torch.from_numpy(list_IMAG_)
 
     if len(list_REAL) != len(list_IMAG):
         return None
 
     rlist = []
     for i in range(len(list_REAL)):
-        rlist.append(tnp.complex128(complex(list_REAL[i], list_IMAG[i])))
+        rlist.append(np.complex128(complex(list_REAL[i], list_IMAG[i])))
 
     return rlist
 
 ##########################################################################################
 
-def mtxto_tnpcmplxarray (realp, imagp):
+def mtxto_npcmplxarray (realp, imagp):
 
-    list_REAL = tnp.float_(realp)
-    list_IMAG = tnp.float_(imagp)
+    list_REAL_ = np.float_(realp)
+    list_IMAG_ = np.float_(imagp)
+    list_REAL = torch.from_numpy(list_REAL_)
+    list_IMAG = torch.from_numpy(list_IMAG_)
 
     if len(list_REAL) != len(list_IMAG):
         return None
@@ -62,12 +62,11 @@ def mtxto_tnpcmplxarray (realp, imagp):
         if len(list_REAL[i]) != len(list_IMAG[i]):
             return None
         
-        row = tnp.zeros(len(list_REAL[i]), dtype=tnp.complex128)
+        row = torch.zeros(len(list_REAL[i]), dtype=torch.complex128)
 
         for j in range(len(list_REAL[i])):
-            row[j] = tnp.complex128(complex(list_REAL[i][j],
+            row[j] = torch.complex128(complex(list_REAL[i][j],
                 list_IMAG[i][j]))
-                
         rlist.append(row)
 
     return rlist
@@ -123,23 +122,23 @@ def get_json_data(args, D_ti, fock_mid_backwd, j, dt, H, I, dip_mat, \
         "HL" : HL,
         "Enuc_list" : Enuc_list,
         "imp_opts" : imp_opts,
-        'ene_list_REAL': tnp.real(ene_list).tolist(),
-        'ene_list_IMAG': tnp.imag(ene_list).tolist(),
-        'dip_list_REAL': tnp.real(dip_list).tolist(),
-        'dip_list_IMAG': tnp.imag(dip_list).tolist(),
-        'weighted_dip_REAL': tnp.real(weighted_dip).tolist(),
-        'weighted_dip_IMAG': tnp.imag(weighted_dip).tolist(),
-        'D_ti_REAL' : tnp.real(D_ti).tolist(),
-        'D_ti_IMAG' : tnp.imag(D_ti).tolist(),
-        'fock_mid_backwd_REAL' : tnp.real(fock_mid_backwd).tolist(),
-        'fock_mid_backwd_IMAG' : tnp.imag(fock_mid_backwd).tolist(),
-        'Dp_ti_REAL': tnp.real(Dp_ti).tolist(),
-        'Dp_ti_IMAG': tnp.imag(Dp_ti).tolist()
+        'ene_list_REAL': torch.real(torch.Tensor(ene_list)).tolist(),
+        'ene_list_IMAG': torch.imag(torch.Tensor(ene_list)).tolist(),
+        'dip_list_REAL': torch.real(torch.Tensor(dip_list)).tolist(),
+        'dip_list_IMAG': torch.imag(torch.Tensor(dip_list)).tolist(),
+        'weighted_dip_REAL': torch.real(torch.Tensor(weighted_dip)).tolist(),
+        'weighted_dip_IMAG': torch.imag(torch.Tensor(weighted_dip)).tolist(),
+        'D_ti_REAL' : torch.real(torch.Tensor(D_ti)).tolist(),
+        'D_ti_IMAG' : torch.imag(torch.Tensor(D_ti)).tolist(),
+        'fock_mid_backwd_REAL' : torch.real(torch.Tensor(fock_mid_backwd)).tolist(),
+        'fock_mid_backwd_IMAG' : torch.imag(torch.Tensor(fock_mid_backwd)).tolist(),
+        'Dp_ti_REAL': torch.real(torch.Tensor(Dp_ti)).tolist(),
+        'Dp_ti_IMAG': torch.imag(torch.Tensor(Dp_ti)).tolist()
         }
 
     if extpot != None:
-        json_data['extpot_REAL'] = tnp.real(extpot).tolist()
-        json_data['extpot_IMAG'] = tnp.imag(extpot).tolist()
+        json_data['extpot_REAL'] = torch.real(torch.Tensor(extpot)).tolist()
+        json_data['extpot_IMAG'] = torch.imag(torch.Tensor(extpot)).tolist()
 
     json_data.update(othervalues)
 
@@ -163,32 +162,32 @@ def main_loop (D_ti, fock_mid_backwd, j, dt, H, I, dip_mat, C, C_inv, S, nbf, \
                 fock_mid_backwd,j,dt,H,I,dip_mat,C,C_inv,S,nbf,\
                 imp_opts,func,fo,basisset, extpot)
         
-    Ah=tnp.conjugate(fock_mid_tmp.T)
-    fo.write('Fock_mid hermitian: %s\n' % tnp.allclose(fock_mid_tmp,Ah))
+    Ah=torch.conj(fock_mid_tmp.T)
+    fo.write('Fock_mid hermitian: %s\n' % torch.allclose(fock_mid_tmp,Ah))
     #transform fock_mid_init in MO basis
-    fockp_mid_tmp=tnp.matmul(tnp.conjugate(C.T),tnp.matmul(fock_mid_tmp,C))
-    u=util.exp_opmat(tnp.copy(fockp_mid_tmp),dt)
+    fockp_mid_tmp=torch.matmul(torch.conj(C.T),torch.matmul(fock_mid_tmp,C))
+    u=util.exp_opmat(torch.clone(fockp_mid_tmp),dt)
     #u=scipy.linalg.expm(-1.0j*fockp_mid_tmp*dt)
     #check u is unitary
-    test_u=tnp.matmul(u,tnp.conjugate(u.T))
-    if (not tnp.allclose(tnp.eye(u.shape[0]),test_u)):
+    test_u=torch.matmul(u,torch.conj(u.T))
+    if (not torch.allclose(torch.eye(u.shape[0]).type(torch.complex128),test_u)):
         print('U is not unitary\n')
     
     #check the trace of density to evolve
-    fo.write('tr of density to evolve: %.8f\n' % tf.math.real(tnp.trace(Dp_ti)))
+    fo.write('tr of density to evolve: %.8f\n' % torch.trace(Dp_ti).real)
     
     #evolve the density in orthonormal basis
-    temp=tnp.matmul(Dp_ti,tnp.conjugate(u.T))
-    Dp_ti_dt=tnp.matmul(u,temp)
+    temp=torch.matmul(Dp_ti,torch.conj(u.T))
+    Dp_ti_dt=torch.matmul(u,temp)
     
     #backtransform Dp_ti_dt
-    D_ti_dt=tnp.matmul(C,tnp.matmul(Dp_ti_dt,tnp.conjugate(C.T)))
-    fo.write('%.8f\n' % tf.math.real(tnp.trace(Dp_ti_dt)))
+    D_ti_dt=torch.matmul(C,torch.matmul(Dp_ti_dt,torch.conj(C.T)))
+    fo.write('%.8f\n' % torch.trace(Dp_ti_dt).real)
     #dipole expectation for D_ti
-    dip_list.append(tnp.trace(tnp.matmul(dip_mat,D_ti)))
+    dip_list.append(torch.trace(torch.matmul(dip_mat,D_ti)))
     
     if debug:
-        fo.write('Dipole  %.8f %.15f\n' % (j*dt, 2.00*tf.math.real(dip_list[j])))
+        fo.write('Dipole  %.8f %.15f\n' % (j*dt, 2.00*dip_list[j].real))
     
     if (do_weighted == -2):
         #weighted dipole 
@@ -197,9 +196,9 @@ def main_loop (D_ti, fock_mid_backwd, j, dt, H, I, dip_mat, C, C_inv, S, nbf, \
     #Energy expectation value at t = t_i 
     Enuc_list.append(-func_ti*Ndip_dir+Nuc_rep) #just in case of non-zero nuclear dipole
     if (func=='hf'):
-        ene_list.append(tnp.trace(tnp.matmul(D_ti,(H+F_ti))))
+        ene_list.append(torch.trace(torch.matmul(D_ti,(H+F_ti))))
     else:
-        ene_list.append(2.00*tnp.trace(tnp.matmul(D_ti,H))+J_i+Exc_i-tnp.trace(tnp.matmul(D_ti,(func_ti*dip_mat))))
+        ene_list.append(2.00*torch.trace(torch.matmul(D_ti,H))+J_i+Exc_i-torch.trace(torch.matmul(D_ti,(func_ti*dip_mat))))
     imp_list.append(func_ti)
     
     #update D_ti and Dp_ti for the next step
@@ -207,10 +206,10 @@ def main_loop (D_ti, fock_mid_backwd, j, dt, H, I, dip_mat, C, C_inv, S, nbf, \
     if debug :
         fo.write('here I update the matrices Dp_ti and D_ti\n')
     
-    D_ti=tnp.copy(D_ti_dt)
-    Dp_ti=tnp.copy(Dp_ti_dt)
+    D_ti=torch.clone(D_ti_dt)
+    Dp_ti=torch.clone(Dp_ti_dt)
     #update fock_mid_backwd for the next step
-    fock_mid_backwd=tnp.copy(fock_mid_tmp)
+    fock_mid_backwd=torch.clone(fock_mid_tmp)
 
     return fock_mid_backwd, D_ti, Dp_ti
 
@@ -292,7 +291,7 @@ def normal_run_init (args):
         analytic = False
 
     #dt in a.u
-    dt = tnp.float_(calc_params['delta_t'])
+    dt = np.float_(calc_params['delta_t'])
     #time_int in atomic unit
     time_int = calc_params['time_int']
     niter = int(time_int/dt)
@@ -319,14 +318,19 @@ def normal_run_init (args):
     
     #initialize mints object
     mints = psi4.core.MintsHelper(mol_wfn.basisset())
-    S = tnp.array(mints.ao_overlap().to_array())
+    S_ = np.array(mints.ao_overlap())
+    S = torch.from_numpy(S_)
     #get T,V,dipole_z
-    T = tnp.array(mints.ao_kinetic().to_array())
-    V = tnp.array(mints.ao_potential().to_array())
+    T_ = np.array(mints.ao_kinetic())
+    V_ = np.array(mints.ao_potential())
+    T = torch.from_numpy(T_)
+    V = torch.from_numpy(V_)
     dipole=mints.ao_dipole()
     #dipole is  a list of psi4.core.Matrix objects
     # dipole[0] -> x, dipole[1] -> y, dipole[2] -> z
-    dip_mat=tnp.copy(dipole[direction].to_array())
+########CONTINUE HERE SOLVE THE PROBLEM WITH DIPOLE DIMENSION!
+    dip_mat_=np.copy(dipole[direction])
+    dip_mat=torch.from_numpy(dip_mat_).type(torch.complex128)
     H = T+V
     #internal defined functional 
 
@@ -344,11 +348,13 @@ def normal_run_init (args):
     os.rename("Dt.cube",cfnames[2])
     os.rename("Ds.cube",cfnames[3])
     #C coefficients
-    C=tnp.array(wfn.Ca().to_array())  
+    C_=np.array(wfn.Ca())  
+    C=torch.from_numpy(C_).type(torch.complex128)
     
-    dipmo_mat = tnp.matmul(tnp.conjugate(C.T),tnp.matmul(dip_mat,C))
+    dipmo_mat = torch.matmul(torch.conj(C.T),torch.matmul(dip_mat,C))
     #get a scf alpha density
-    Da = tnp.array(wfn.Da().to_array())
+    Da_ = np.array(wfn.Da())
+    Da = torch.from_numpy(Da_).type(torch.complex128)
     
     ################################################################
     # Get nbf for closed shell molecules
@@ -369,13 +375,13 @@ def normal_run_init (args):
         raise Exception("Estimated memory utilization (%4.2f GB) " +\
                 "exceeds numpy_memory limit of %4.2f GB." % (memory_footprint, numpy_memory))
     #Get Eri (2-electron repulsion integrals)
-    I = tnp.array(mints.ao_eri().to_array())
+    I_ = np.array(mints.ao_eri())
+    I = torch.from_numpy(I_)
     
     #D_0 is the density in the reference molecular basis
-    D_0_=np.zeros((nbf,nbf))
+    D_0=torch.zeros((nbf,nbf),dtype=torch.complex128)
     for num in range(int(ndocc)):
-        D_0_[num,num]=1.0
-    D_0=tf.convert_to_tensor(D_0_)
+        D_0[num,num]=1.0
     #nuclear dipole for non-homonuclear molecules
     Ndip = mol.nuclear_dipole()
     Ndip_dir = Ndip[direction]
@@ -402,23 +408,25 @@ def normal_run_init (args):
         k = imp_opts['Fmax']
        
         #dip_mat is transformed to the reference MO basis
-        dip_mo=tnp.matmul(tnp.conjugate(C.T),tnp.matmul(dip_mat,C))
+        dip_mo=torch.matmul(torch.conj(C.T),torch.matmul(dip_mat,C))
         if (do_weighted == 99) or (do_weighted == -1):
-            dip_mo=util.dipole_selection(dip_mo,do_weighted,ndocc,occlist,virtlist,fo,debug)
-        u0 = util.exp_opmat(dip_mo,tnp.float_(-k))
-        Dp_init= tnp.matmul(u0,tnp.matmul(Dp_0,tnp.conjugate(u0.T)))
+            dip_mo_=util.dipole_selection(dip_mo,do_weighted,ndocc,occlist,virtlist,fo,debug)
+            dip_mo=torch.from_numpy(dip_mo_)
+        u0 = util.exp_opmat(dip_mo,np.float_(-k))
+        #u0 = torch.from_numpy(u0_)
+        Dp_init= torch.matmul(u0,torch.matmul(Dp_0,torch.conj(u0.T)))
         func_t0 = k
         #backtrasform Dp_init
-        D_init = tnp.matmul(C,tnp.matmul(Dp_init,tnp.conjugate(C.T)))
+        D_init = torch.matmul(C,torch.matmul(Dp_init,torch.conj(C.T)))
         Da = D_init
         Dp_0 = Dp_init 
        
         #J0p,Exc0p,F_t0=util.get_Fock(D_ti,H,I,func,basisset)
         #if (func == 'hf'):                                  
-        #    testene = tnp.trace(tnp.matmul(D_init,(H+F_t0)))  
+        #    testene = torch.trace(torch.matmul(D_init,(H+F_t0)))  
         #else:                                               
-        #    testene = 2.00*tnp.trace(tnp.matmul(D_init,H))+J0p+Exc0p
-        #print('trace D(0+): %.8f' % tnp.trace(Dp_init).real)       
+        #    testene = 2.00*torch.trace(torch.matmul(D_init,H))+J0p+Exc0p
+        #print('trace D(0+): %.8f' % torch.trace(Dp_init).real)       
         #print(testene+Nuc_rep)                                    
 
     
@@ -433,57 +441,57 @@ def normal_run_init (args):
     
     #C_inv used to backtransform D(AO)
     
-#    C_inv=tnp.linalg.inv(C)
-    C_inv=tf.linalg.inv(C)
+    C_inv=torch.linalg.inv(C)
     print('Entering in the first step of propagation')
     J0,Exc0,func_t0,F_t0,fock_mid_init=util.mo_fock_mid_forwd_eval(Da,wfn.Fa(),\
             0,dt,H,I,dip_mat,C,C_inv,S,nbf,imp_opts,func,fo,basisset)
     
     #check the Fock
-    print(type(wfn.Fa()),type(F_t0))
     if debug :
-         print('F_t0 is equal to wfn.Fa() : %s' % tnp.allclose(tnp.asarray(wfn.Fa().to_array()),F_t0,atol=1.0e-12))
+         print('F_t0 is equal to wfn.Fa() : %s' % torch.allclose(torch.from_numpy(wfn.Fa().to_array()).type(torch.complex128),F_t0,atol=1.0e-12))
     
     #check hermicity of fock_mid_init
     
-    Ah=tnp.conjugate(fock_mid_init.T)
-    fo.write('Fock_mid hermitian: %s\n' % tnp.allclose(fock_mid_init,Ah))
+    Ah=torch.conj(fock_mid_init.T)
+    fo.write('Fock_mid hermitian: %s\n' % torch.allclose(fock_mid_init,Ah))
     
     #propagate D_t0 -->D(t0+dt)
     #
     #fock_mid_init is transformed in the MO ref basis
-    fockp_mid_init = tnp.matmul(tnp.conjugate(C.T),tnp.matmul(fock_mid_init,C))
+    fockp_mid_init = torch.matmul(torch.conj(C.T),torch.matmul(fock_mid_init,C))
     
     #u=scipy.linalg.expm(-1.j*fockp_mid_init*dt)
     u = util.exp_opmat(fockp_mid_init,dt)
     
-    temp = tnp.matmul(Dp_0,tnp.conjugate(u.T))
+    temp = torch.matmul(Dp_0,torch.conj(u.T))
     
-    Dp_t1 = tnp.matmul(u,temp)
+    Dp_t1 = torch.matmul(u,temp)
     
     #check u if unitary
-    test_u = tnp.matmul(u,tnp.conjugate(u.T))
-    fo.write('U is unitary :%s\n' % tnp.allclose(test_u,tnp.eye(u.shape[0])))
+    test_u = torch.matmul(u,torch.conj(u.T))
+    fo.write('U is unitary :%s\n' % torch.allclose(test_u,torch.eye(u.shape[0]).type(torch.complex128)))
     
-    fock_mid_backwd = tnp.copy(fock_mid_init)
+    fock_mid_backwd = torch.clone(fock_mid_init)
     
     #backtrasform Dp_t1
     
-    D_t1=tnp.matmul(C,tnp.matmul(Dp_t1,tnp.conjugate(C.T)))
-    
+    D_t1=torch.matmul(C,torch.matmul(Dp_t1,torch.conj(C.T)))
+    H=H.type(torch.complex128)
+    S=S.type(torch.complex128)
+
     if (func == 'hf'):
-        ene_list.append(tnp.trace(tnp.matmul(Da,(H+F_t0))))
+        ene_list.append(torch.trace(torch.matmul(Da,(H+F_t0))))
     else:    
-        ene_list.append(2.00*tnp.trace(tnp.matmul(Da,H))+J0+Exc0-tnp.trace(tnp.matmul(Da,(func_t0*dip_mat))))
+        ene_list.append(2.00*torch.trace(torch.matmul(Da,H))+J0+Exc0-torch.trace(torch.matmul(Da,(func_t0*dip_mat))))
     
-    dip_list.append(tnp.trace(tnp.matmul(Da,dip_mat)))
+    dip_list.append(torch.trace(torch.matmul(Da,dip_mat)))
     
     #weighted dipole
     if (do_weighted == -2):
         res = util.dipoleanalysis(dipmo_mat,Dp_0,ndocc,occlist,virtlist,debug,HL)
         weighted_dip.append(res)
     
-    fock_mid_backwd=tnp.copy(fock_mid_init) #prepare the fock at the previous midpint
+    fock_mid_backwd=torch.clone(fock_mid_init) #prepare the fock at the previous midpint
     D_ti=D_t1
     Dp_ti=Dp_t1
     Enuc_list.append(-func_t0*Ndip_dir+Nuc_rep) #just in case of non-zero nuclear dipole
@@ -491,11 +499,11 @@ def normal_run_init (args):
     imp_list.append(func_t0)
     if debug :  
         #trace of D_t1
-        fo.write('%.8f\n' % tf.math.real(tnp.trace(Dp_ti)))
-        fo.write('Trace of DS %.8f\n' % tnp.trace(tf.math.real(tnp.matmul(S,D_ti))))
-        fo.write('Trace of SD.real %.14f\n' % tnp.trace(tnp.matmul(S,tf.math.real(D_ti))))
-        fo.write('Trace of SD.imag %.14f\n' % tnp.trace(tnp.matmul(S,tf.math.imag(D_ti))))
-        fo.write('Dipole %.8f %.15f\n' % (0.000, 2.00*tf.math.real(dip_list[0])))
+        fo.write('%.8f\n' % torch.trace(Dp_ti).real)
+        fo.write('Trace of DS %.8f\n' % torch.trace(torch.matmul(S,D_ti)).real)
+        fo.write('Trace of SD.real %.14f\n' % torch.trace(torch.matmul(S.real,D_ti.real)))
+        fo.write('Trace of SD.imag %.14f\n' % torch.trace(torch.matmul(S.real,D_ti.imag)))
+        fo.write('Dipole %.8f %.15f\n' % (0.000, 2.00*dip_list[0].real))
         
     return D_ti, fock_mid_backwd, dt, H, I, dip_mat, C, C_inv, S, nbf, \
             imp_opts, func, fo, basisset, Dp_ti, weighted_dip, dip_list, \
@@ -599,28 +607,39 @@ def restart_init (args):
     time_int = calc_params_new['time_int']
     niter = int(time_int/dt)
 
-    dipmo_mat = tnp.asarray(json_data["dipmo_mat"])
-    H = tnp.asarray(json_data["H"])
-    I = tnp.asarray(json_data["I"])
-    dip_mat = tnp.asarray(json_data["dip_mat"])
-    C = tnp.asarray(json_data["C"])
-    C_inv = tnp.asarray(json_data["C_inv"])
-    S = tnp.asarray(json_data["S"])
+    dipmo_mat_ = np.asarray(json_data["dipmo_mat"])
+    H_ = np.asarray(json_data["H"])
+    I_ = np.asarray(json_data["I"])
+    dip_mat_ = np.asarray(json_data["dip_mat"])
+    C_ = np.asarray(json_data["C"])
+    C_inv_ = np.asarray(json_data["C_inv"])
+    S_ = np.asarray(json_data["S"])
 
-    ene_list = vctto_tnpcmplxarray (json_data["ene_list_REAL"], \
+    dipmo_mat = torch.from_numpy(dipmo_mat_).type(torch.complex128)
+    H = torch.from_numpy(H_)
+    I = torch.from_numpy(I_)
+    dip_mat = torch.from_numpy(dip_mat_)
+    C = torch.from_numpy(C_)
+    C_inv = torch.from_numpy(C_inv_)
+    S =  torch.from_numpy(S_)
+
+    ene_list = vctto_npcmplxarray (json_data["ene_list_REAL"], \
             json_data["ene_list_IMAG"])
-    dip_list = vctto_tnpcmplxarray (json_data["dip_list_REAL"], \
+    dip_list = vctto_npcmplxarray (json_data["dip_list_REAL"], \
             json_data["dip_list_IMAG"])
 
-    weighted_dip = mtxto_tnpcmplxarray (json_data["weighted_dip_REAL"], \
+    weighted_dip = mtxto_npcmplxarray (json_data["weighted_dip_REAL"], \
             json_data["weighted_dip_IMAG"])
 
-    D_ti = tnp.array(mtxto_tnpcmplxarray (json_data["D_ti_REAL"], \
+    D_ti_ = np.array(mtxto_npcmplxarray (json_data["D_ti_REAL"], \
             json_data["D_ti_IMAG"]))
-    Dp_ti = tnp.array(mtxto_tnpcmplxarray (json_data["Dp_ti_REAL"], \
+    D_ti = torch.from_numpy(D_ti_)
+    Dp_ti_ = np.array(mtxto_npcmplxarray (json_data["Dp_ti_REAL"], \
             json_data["Dp_ti_IMAG"]))
-    fock_mid_backwd = tnp.array(mtxto_tnpcmplxarray (json_data["fock_mid_backwd_REAL"], \
+    Dp_ti = torch.from_numpy(Dp_ti_)
+    fock_mid_backwd_ = np.array(mtxto_npcmplxarray (json_data["fock_mid_backwd_REAL"], \
             json_data["fock_mid_backwd_IMAG"]))
+    fock_mid_backwd = torch.from_numpy(fock_mid_backwd_)
 
     cfnames = args.cubefilenames.split(";")
     if len(cfnames) != 4:
@@ -638,8 +657,9 @@ def restart_init (args):
         exit(1)
 
     if "extpot_REAL" in json_data and "extpot_IMAG" in json_data:
-        extpot = tnp.array(mtxto_tnpcmplxarray (json_data["extpot_REAL"], \
+        extpot_ = np.array(mtxto_npcmplxarray (json_data["extpot_REAL"], \
                 json_data["extpot_IMAG"]))
+        extpot = torch.from_numpy(extpot_)
  
     fo = open(dbgfnames[0], "w")
 
@@ -833,22 +853,22 @@ if __name__ == "__main__":
     end = time.time()
     cend = time.process_time()
     print("Time for %10d time iterations : (%.5f s, %.5f s)\n" %(niter+1,end-start,cend-cstart))
-    t_point=tnp.linspace(0.0,niter*dt,niter+1)
-    dip_t=2.00*tf.math.real(tnp.array(dip_list)) + Ndip_dir
-    ene_t=tf.math.real(tnp.array(ene_list)) + Nuc_rep
-    imp_t=tnp.array(imp_list)
+    t_point=torch.linspace(0.0,niter*dt,niter+1)
+    dip_t=2.00*torch.Tensor(dip_list).real + Ndip_dir
+    ene_t=torch.Tensor(ene_list).real + Nuc_rep
+    imp_t=torch.Tensor(imp_list)
 
     print("Dumping output files")
     if (do_weighted == -2):
-        wd_dip=2.00*tf.math.real(tnp.array(weighted_dip))
-        np.savetxt(outfnames[3], tnp.c_[t_point,wd_dip].numpy(), \
+        wd_dip=2.00*torch.Tensor(weighted_dip).real
+        np.savetxt(outfnames[3], np.c_[t_point,wd_dip], \
                 fmt='%.12e')
     
-    np.savetxt(outfnames[0], tnp.c_[t_point,dip_t].numpy(), fmt='%.12e')
-    np.savetxt(outfnames[1], tnp.c_[t_point,imp_t].numpy(), fmt='%.12e')
-    np.savetxt(outfnames[2], tnp.c_[t_point,ene_t].numpy(), fmt='%.12e')
+    np.savetxt(outfnames[0], np.c_[t_point,dip_t], fmt='%.12e')
+    np.savetxt(outfnames[1], np.c_[t_point,imp_t], fmt='%.12e')
+    np.savetxt(outfnames[2], np.c_[t_point,ene_t], fmt='%.12e')
 
     if not args.restart:
-        wfn.Da().copy(psi4.core.Matrix.from_array(tf.math.real(D_ti)))
-        wfn.Db().copy(psi4.core.Matrix.from_array(tf.math.real(D_ti)))
+        wfn.Da().copy(psi4.core.Matrix.from_array(D_ti.real))
+        wfn.Db().copy(psi4.core.Matrix.from_array(D_ti.real))
         psi4.cubeprop(wfn)
