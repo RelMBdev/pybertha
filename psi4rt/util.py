@@ -92,7 +92,8 @@ def get_Fock(D, Hcore, I, f_type, basisset):
         V=psi4.core.Matrix(nbf,nbf)
         potential.compute_V([V])
         potential.finalize()
-        F = Hcore + J*tnp.float_(2.0) +V.to_array()
+        print(type(Hcore),type(J),type(V.to_array()))
+        F = Hcore + J*tnp.float_(2.0) +tf.convert_to_tensor(V.to_array())
         Exc= potential.quadrature_values()["FUNCTIONAL"]
         if sup.is_x_hybrid():
           alpha = sup.x_alpha()

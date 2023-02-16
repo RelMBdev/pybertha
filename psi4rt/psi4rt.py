@@ -440,7 +440,7 @@ def normal_run_init (args):
             0,dt,H,I,dip_mat,C,C_inv,S,nbf,imp_opts,func,fo,basisset)
     
     #check the Fock
-    print(type(wfn.Fa()),type(F_t0))
+    #print(type(wfn.Fa()),type(F_t0))
     if debug :
          print('F_t0 is equal to wfn.Fa() : %s' % tnp.allclose(tnp.asarray(wfn.Fa().to_array()),F_t0,atol=1.0e-12))
     
