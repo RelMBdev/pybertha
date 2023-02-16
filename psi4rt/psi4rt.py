@@ -26,6 +26,8 @@ sys.path.append(os.environ['PYBERTHAROOT']+"/src")
 #sys.path.append(os.environ['RTHOME'])
 sys.path.append(os.environ['PYBERTHA_MOD_PATH'])
 
+print(torch.cuda.is_available())
+
 ##########################################################################################
 
 def vctto_npcmplxarray (realp, imagp):
@@ -122,23 +124,23 @@ def get_json_data(args, D_ti, fock_mid_backwd, j, dt, H, I, dip_mat, \
         "HL" : HL,
         "Enuc_list" : Enuc_list,
         "imp_opts" : imp_opts,
-        'ene_list_REAL': torch.real(torch.Tensor(ene_list)).tolist(),
-        'ene_list_IMAG': torch.imag(torch.Tensor(ene_list)).tolist(),
-        'dip_list_REAL': torch.real(torch.Tensor(dip_list)).tolist(),
-        'dip_list_IMAG': torch.imag(torch.Tensor(dip_list)).tolist(),
-        'weighted_dip_REAL': torch.real(torch.Tensor(weighted_dip)).tolist(),
-        'weighted_dip_IMAG': torch.imag(torch.Tensor(weighted_dip)).tolist(),
-        'D_ti_REAL' : torch.real(torch.Tensor(D_ti)).tolist(),
-        'D_ti_IMAG' : torch.imag(torch.Tensor(D_ti)).tolist(),
-        'fock_mid_backwd_REAL' : torch.real(torch.Tensor(fock_mid_backwd)).tolist(),
-        'fock_mid_backwd_IMAG' : torch.imag(torch.Tensor(fock_mid_backwd)).tolist(),
-        'Dp_ti_REAL': torch.real(torch.Tensor(Dp_ti)).tolist(),
-        'Dp_ti_IMAG': torch.imag(torch.Tensor(Dp_ti)).tolist()
+        'ene_list_REAL': np.real(ene_list).tolist(),
+        'ene_list_IMAG': np.imag(ene_list).tolist(),
+        'dip_list_REAL': np.real(dip_list).tolist(),
+        'dip_list_IMAG': np.imag(dip_list).tolist(),
+        'weighted_dip_REAL': np.real(weighted_dip).tolist(),
+        'weighted_dip_IMAG': np.imag(weighted_dip).tolist(),
+        'D_ti_REAL' : np.real(D_ti).tolist(),
+        'D_ti_IMAG' : np.imag(D_ti).tolist(),
+        'fock_mid_backwd_REAL' : np.real(fock_mid_backwd).tolist(),
+        'fock_mid_backwd_IMAG' : np.imag(fock_mid_backwd).tolist(),
+        'Dp_ti_REAL': np.real(Dp_ti).tolist(),
+        'Dp_ti_IMAG': np.imag(Dp_ti).tolist()
         }
 
     if extpot != None:
-        json_data['extpot_REAL'] = torch.real(torch.Tensor(extpot)).tolist()
-        json_data['extpot_IMAG'] = torch.imag(torch.Tensor(extpot)).tolist()
+        json_data['extpot_REAL'] = np.real(extpot).tolist()
+        json_data['extpot_IMAG'] = np.imag(extpot).tolist()
 
     json_data.update(othervalues)
 

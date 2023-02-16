@@ -163,7 +163,7 @@ def mo_fock_mid_forwd_eval(D_ti,fock_mid_ti_backwd,i,delta_t,H,I,dipole,\
         fock_mid_ti_backwd=torch.from_numpy(fock_mid_ti_backwd.to_array())
     else:
         None
-    print(type(fock_ti_ao),type(extpot),type(fock_mid_ti_backwd))
+    #print(type(fock_ti_ao),type(extpot),type(fock_mid_ti_backwd))
     fock_guess = 2.00*( fock_ti_ao + extpot ) - fock_mid_ti_backwd
     #if i==0:
     #   print('Fock_guess for i =0 is Fock_0: %s' % torch.allclose(fock_guess,fock_ti_ao))
