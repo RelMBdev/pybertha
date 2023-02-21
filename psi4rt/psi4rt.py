@@ -19,6 +19,7 @@ import tensorflow as tf
 from tensorflow.python.ops.numpy_ops import np_config
 np_config.enable_numpy_behavior()
 import tensorflow.experimental.numpy as tnp
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
 #os.environ['PYBERTHAROOT'] = "/projectsn/mp1009_1/motas/9_bomme/software/pybertha/"
 #os.environ['RTHOME'] = "/projectsn/mp1009_1/motas/9_bomme/software/pybertha/psi4rt"
@@ -817,8 +818,25 @@ if __name__ == "__main__":
                     psi4options, geom, do_weighted, Enuc_list, \
                     imp_params, calc_params, Ndip_dir, Nuc_rep, extpot)
 
+            new_json_data = {}
+            for key, value in json_data.items():
+                if isinstance(value, (float, int, str)):
+                    new_json_data[key] = value
+                elif isinstance(value, complex):
+                    new_json_data[key] = float(value.real)
+                elif isinstance(value, dict):
+                    new_json_data[key] = {}
+                    for subkey, subvalue in value.items():
+                        if isinstance(subvalue, (float, int, str)):
+                            new_json_data[key][subkey] = subvalue
+                        elif isinstance(subvalue, complex):
+                            new_json_data[key][subkey] = float(subvalue.real)
+                        else:
+                            None
+                else:
+                    None 
             with open(args.restartfile, 'w') as fp:
-                json.dump(json_data, fp, sort_keys=True, indent=4)
+                json.dump(new_json_data, fp, sort_keys=True, indent=4)
 
             dumpcounter = 0
 
@@ -841,12 +859,12 @@ if __name__ == "__main__":
     print("Dumping output files")
     if (do_weighted == -2):
         wd_dip=2.00*tf.math.real(tnp.array(weighted_dip))
-        np.savetxt(outfnames[3], tnp.c_[t_point,wd_dip].numpy(), \
+        np.savetxt(outfnames[3], np.c_[t_point,wd_dip].numpy(), \
                 fmt='%.12e')
     
-    np.savetxt(outfnames[0], tnp.c_[t_point,dip_t].numpy(), fmt='%.12e')
-    np.savetxt(outfnames[1], tnp.c_[t_point,imp_t].numpy(), fmt='%.12e')
-    np.savetxt(outfnames[2], tnp.c_[t_point,ene_t].numpy(), fmt='%.12e')
+    np.savetxt(outfnames[0], np.c_[t_point,dip_t], fmt='%.12e')
+    np.savetxt(outfnames[1], np.c_[t_point,imp_t], fmt='%.12e')
+    np.savetxt(outfnames[2], np.c_[t_point,ene_t], fmt='%.12e')
 
     if not args.restart:
         wfn.Da().copy(psi4.core.Matrix.from_array(tf.math.real(D_ti)))
