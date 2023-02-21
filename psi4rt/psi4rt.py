@@ -15,6 +15,7 @@ import json
 import pickle 
 from json import encoder
 import torch
+print(torch.cuda.is_available())
 
 #os.environ['PYBERTHAROOT'] = "/projectsn/mp1009_1/motas/9_bomme/software/pybertha_t/"
 #os.environ['RTHOME'] = "/projectsn/mp1009_1/motas/9_bomme/software/pybertha/psi4rt"
@@ -26,7 +27,6 @@ sys.path.append(os.environ['PYBERTHAROOT']+"/src")
 #sys.path.append(os.environ['RTHOME'])
 sys.path.append(os.environ['PYBERTHA_MOD_PATH'])
 
-print(torch.cuda.is_available())
 
 ##########################################################################################
 
@@ -824,7 +824,7 @@ if __name__ == "__main__":
 
         dumpcounter += 1
 
-        #if args.dumprestartnum > 0:
+        #if argsvdumprestartnum > 0:
         if (dumpcounter == args.dumprestartnum) or \
                 (j == niter):
             
@@ -838,9 +838,28 @@ if __name__ == "__main__":
                     ndocc, occlist, virtlist, debug, HL, \
                     psi4options, geom, do_weighted, Enuc_list, \
                     imp_params, calc_params, Ndip_dir, Nuc_rep, extpot)
+            
 
+            new_json_data = {}
+            for key, value in json_data.items():
+                if isinstance(value, (float, int, str)):
+                    new_json_data[key] = value
+                elif isinstance(value, complex):
+                    new_json_data[key] = float(value.real)
+                elif isinstance(value, dict):
+                    new_json_data[key] = {}
+                    for subkey, subvalue in value.items():
+                        if isinstance(subvalue, (float, int, str)):
+                            new_json_data[key][subkey] = subvalue
+                        elif isinstance(subvalue, complex):
+                            new_json_data[key][subkey] = float(subvalue.real)
+                        else:
+                            None
+                else:
+                    None 
+ 
             with open(args.restartfile, 'w') as fp:
-                json.dump(json_data, fp, sort_keys=True, indent=4)
+                json.dump(new_json_data, fp, sort_keys=True, indent=4)
 
             dumpcounter = 0
 
@@ -856,13 +875,14 @@ if __name__ == "__main__":
     cend = time.process_time()
     print("Time for %10d time iterations : (%.5f s, %.5f s)\n" %(niter+1,end-start,cend-cstart))
     t_point=torch.linspace(0.0,niter*dt,niter+1)
-    dip_t=2.00*torch.Tensor(dip_list).real + Ndip_dir
-    ene_t=torch.Tensor(ene_list).real + Nuc_rep
-    imp_t=torch.Tensor(imp_list)
+    print(type(dip_list))
+    dip_t=2.00*torch.as_tensor(np.asarray(dip_list)).real + Ndip_dir
+    ene_t=torch.as_tensor(np.asarray(ene_list)).real + Nuc_rep
+    imp_t=torch.as_tensor(np.asarray(imp_list))
 
     print("Dumping output files")
     if (do_weighted == -2):
-        wd_dip=2.00*torch.Tensor(weighted_dip).real
+        wd_dip=2.00*torch.as_tensor(np.asarray(weighted_dip)).real
         np.savetxt(outfnames[3], np.c_[t_point,wd_dip], \
                 fmt='%.12e')
     
