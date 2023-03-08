@@ -853,14 +853,14 @@ if __name__ == "__main__":
     cend = time.process_time()
     aend = time.perf_counter()
     print("Time for %10d time iterations : (%.5f s, %.5f s, %.5f s)\n" %(niter+1,end-start,cend-cstart,aend-astart))
-    t_point=np.linspace(0.0,niter*dt,niter+1)
-    dip_t=2.00*tf.convert_to_tensor(np.array(dip_list),dtype=tf.complex128).real + Ndip_dir
-    ene_t=tf.convert_to_tensor(np.array(ene_list),dtype=tf.complex128).real + Nuc_rep
+    t_point=tf.linspace(0.0,niter*dt,niter+1)
+    dip_t=2.00*tf.math.real(tf.convert_to_tensor(np.array(dip_list),dtype=tf.complex128)) + Ndip_dir
+    ene_t=tf.math.real(tf.convert_to_tensor(np.array(ene_list),dtype=tf.complex128)) + Nuc_rep
     imp_t=tf.convert_to_tensor(np.array(imp_list),dtype=tf.complex128)
 
     print("Dumping output files")
     if (do_weighted == -2):
-        wd_dip=2.00*tf.convert_to_tensor(np.array(weighted_dip),dtype=tf.complex128).real
+        wd_dip=2.00*tf.math.real(tf.convert_to_tensor(np.array(weighted_dip),dtype=tf.complex128))
         np.savetxt(outfnames[3], np.c_[t_point,wd_dip], \
                 fmt='%.12e')
     
@@ -869,6 +869,6 @@ if __name__ == "__main__":
     np.savetxt(outfnames[2], np.c_[t_point,ene_t], fmt='%.12e')
 
     if not args.restart:
-        wfn.Da().copy(psi4.core.Matrix.from_array(D_ti.real))
-        wfn.Db().copy(psi4.core.Matrix.from_array(D_ti.real))
+        wfn.Da().copy(psi4.core.Matrix.from_array(tf.math.real(D_ti)))
+        wfn.Db().copy(psi4.core.Matrix.from_array(tf.math.real(D_ti)))
         psi4.cubeprop(wfn)
