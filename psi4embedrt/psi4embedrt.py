@@ -57,7 +57,9 @@ def init_stdout_redirect ():
 
 ########################################################################################################
 
+
 def finalize_stdout_redirect (fname, writef=False):
+
 
     global stdout_fileno 
     global stdout_save 
@@ -94,6 +96,13 @@ def scfiterations (args, maxiter, jk, H, Cocc, func, wfn, D, vemb, E, Eold, \
             jk.C_left_add(Cocc)
             jk.compute()
             jk.C_clear()
+            # add a potential from a static field
+            if args.static_field:
+                fmax = args.fmax 
+                fdir = args.fdir
+                H.axpy(-fmax,dipole[fdir])
+                print("fdir = %4.16f "%(fdir))
+                print("fmax = %4.16f "%(fmax))
        
             # Build Fock matrix
             F = H.clone()
@@ -122,6 +131,7 @@ def scfiterations (args, maxiter, jk, H, Cocc, func, wfn, D, vemb, E, Eold, \
             ####### 
             F.axpy(1.0, V)
             F.axpy(1.0, vemb)
+
             twoel = 2.00*np.trace(np.matmul(np.array(D),np.array(jk.J()[0])))
             # DIIS error build and update
             diis_e = psi4.core.Matrix.triplet(F, D, S, False, False, False)
@@ -130,8 +140,10 @@ def scfiterations (args, maxiter, jk, H, Cocc, func, wfn, D, vemb, E, Eold, \
        
             diis.add(F, diis_e)
        
-            # SCF energy and update
+            # SCF energy and update, if args.static_field=True 
+            # 2.0*H.vector_dot(D) include the contribution from the one-el operator -mu*Field_static
             SCF_E = 2.0*H.vector_dot(D) + Enuc + Exc + twoel
+         
        
             dRMS = diis_e.rms()
        
@@ -154,7 +166,7 @@ def scfiterations (args, maxiter, jk, H, Cocc, func, wfn, D, vemb, E, Eold, \
             F = psi4.core.Matrix.from_array(diis.extrapolate())
        
             # Diagonalize Fock matrix
-            C, Cocc, D = build_orbitals(F)
+            orbene, C, Cocc, D = build_orbitals(F)
        
             if SCF_ITER == maxiter:
                 psi4.core.clean()
@@ -226,7 +238,7 @@ def scfiterations (args, maxiter, jk, H, Cocc, func, wfn, D, vemb, E, Eold, \
              break # for args.fde = False, quit the outer loop of splitSCF scheme
     #end outer loop
 
-    return D, C, Cocc, F, SCF_E, twoel, Exc
+    return D, C, Cocc, F, SCF_E, twoel, Exc, orbene
 
     # Diagonalize routine
 
@@ -247,7 +259,7 @@ def build_orbitals(diag):
     
     D = psi4.core.Matrix.doublet(Cocc, Cocc, False, True)
       
-    return C, Cocc, D
+    return eigvals, C, Cocc, D
 
 ########################################################################################################
 
@@ -258,6 +270,8 @@ if __name__ == "__main__":
             type=str, default="geomA.xyz")
     parser.add_argument("-gB","--geom_env", help="Specify geometry file for environment", required=True, 
             type=str, default="geomB.xyz")
+    parser.add_argument("--ghostB", help="Add ghosted B atoms to geomA", 
+            required=False, action="store_true", default=False)
     parser.add_argument("-d", "--debug", help="Debug on, prints debug info to err.txt", required=False,
             default=False, action="store_true")
     parser.add_argument("--modpaths", help="set berthamod and all other modules path [\"path1;path2;...\"] (default = ../src)", 
@@ -267,6 +281,14 @@ if __name__ == "__main__":
 
     parser.add_argument("--env_obs", help="Specify the orbital basis set for the enviroment (default: AUG/ADZP)", required=False, 
             type=str, default="AUG/ADZP")
+
+    parser.add_argument("--static_field", help="Add a static field to the SCF (default : False)", required=False,
+            default=False, action="store_true")
+    parser.add_argument("--fmax", help="Static field amplitude (default : 1.0e-5)", required=False,
+            type=np.float64, default=1.0e-5)
+    parser.add_argument("--fdir", help="External field direction (cartesian)  (default: 2)",
+            required=False, type=int, default=2)
+
     parser.add_argument("--env_func", help="Specify the function for the environment density (default: BLYP)", required=False, 
             type=str, default="BLYP")
     parser.add_argument("--act_obs", help="Specify the orbital basis set for the active system (deafult: aug-cc-pvdz)", required=False, 
@@ -301,6 +323,7 @@ if __name__ == "__main__":
     #more option to be added
     
     args = parser.parse_args() #temporary
+    rt_nthreads = int(os.getenv('OMP_NUM_THREADS', 1))
 
     for path in args.modpaths.split(";"):
         sys.path.append(path)
@@ -330,8 +353,9 @@ if __name__ == "__main__":
       imp_opts, calc_params = util.set_params(args.inputfile)
       func = calc_params['func_type'] # from input.inp. default : blyp
     
-    geom, mol = fde_util.set_input(geomA, basis_set)
-    
+    geom, mol = fde_util.set_input(geomA, basis_set,geomB,args.ghostB)
+    psi4.set_num_threads(rt_nthreads)
+
     ene = None 
     wfn_scf = None
     adfoufname = "./adf.out"
@@ -467,6 +491,7 @@ if __name__ == "__main__":
     D = np.array(wfn_scf.Da())
     C0 = np.array(wfn_scf.Ca()) #unpolarized MOs - for later use
     Dref = np.copy(D)
+    Eref = ene
     mints = psi4.core.MintsHelper(wfn_scf.basisset())
     S = mints.ao_overlap()
     ndocc = wfn_scf.nalpha() 
@@ -483,7 +508,7 @@ if __name__ == "__main__":
       t = threading.Thread(target=drain_pipe)
       t.start()
 
-      phi, lpos, nbas = fde_util.phi_builder(mol,xs,ys,zs,ws,basis_set)
+      phi, lpos, nbas = fde_util.phi_builder(xs, ys, zs, ws, wfn_scf.basisset())
 
       os.close(stdout_fileno)
       t.join()
@@ -707,7 +732,7 @@ if __name__ == "__main__":
     start = time.time()
     cstart = time.process_time()
 
-    D, C, Cocc, F, SCF_E, twoel, Exc = scfiterations (args, maxiter, jk, H, Cocc, func, \
+    D, C, Cocc, F, SCF_E, twoel, Exc, orb_eigv = scfiterations (args, maxiter, jk, H, Cocc, func, \
       wfn, D, vemb, E, Eold, Fock_list, DIIS_error,  phi, agrid, densgrad, denshess, \
         isolated_elpot_enviro, E_conv, D_conv)
     
@@ -719,6 +744,15 @@ if __name__ == "__main__":
     print('Final DFT energy: %.16f hartree' % SCF_E)
     print('    twoel energy: %.16f hartree' % twoel)
     print('       xc energy: %.16f hartree' % Exc)
+    
+    print('Orbital Energies [Eh]\n')
+    print('Doubly Occupied:\n')
+    for k in range(ndocc):
+         print('%iA : %.6f' %(k+1,orb_eigv.np[k]))
+    print('Virtual:\n')
+
+    for k in range(ndocc,nbf):
+         print('%iA : %.6f'% (k+1,orb_eigv.np[k]))
 
     dipz = np.matmul(np.array(D),np.array(dipole[2]))
     dipvalz = np.trace(2.0*dipz) #+ Ndip[2]
@@ -729,15 +763,28 @@ if __name__ == "__main__":
     fout = open("emb_res.txt", "w")
     conv = 2.541765 # 1 unit of electric dipole moment (au) = 2.541765 Debye
     conv = 1.0 # for atomic units
-    fout.write('polarized dipole: %.16f, %.16f, %.16f a.u\n' %  (dipvalx*conv,dipvaly*conv,dipvalz*conv))
+    fout.write('polarized (embedding) dipole:  \n')
+    if args.static_field:
+     fout.write('External Field direction: %.16f \n' % args.fdir)
+     fout.write('External Filed strength (a.u.): %.7f \n' %args.fmax)
+    fout.write('polarized electron dipole: %.16f, %.16f, %.16f a.u\n' %  (dipvalx*conv,dipvaly*conv,dipvalz*conv))
+    fout.write('Nuclear dipole:            %.16f, %.16f, %.16f a.u\n' %  (Ndip[0]*conv,Ndip[1]*conv,Ndip[2]*conv))
+    fout.write('total dipole:              %.16f, %.16f, %.16f a.u\n' %  ((dipvalx+Ndip[0])*conv,(dipvaly+Ndip[1])*conv,(dipvalz+Ndip[2])*conv))
+    fout.write('Final DFT energy: %.16f hartree\n' % (SCF_E)) 
+
     dipz = np.matmul(np.array(Dref),np.array(dipole[2]))
     dipvalz = np.trace(2.0*dipz) #+ Ndip[2]
     dipy = np.matmul(np.array(Dref),np.array(dipole[1]))
     dipvaly = np.trace(2.0*dipy) #+ Ndip[1]
     dipx = np.matmul(np.array(Dref),np.array(dipole[0]))
     dipvalx = np.trace(2.0*dipx) #+ Ndip[0]
-    fout.write('unpolarized dipole: %.16f, %.16f, %.16f a.u\n' %  (dipvalx*conv,dipvaly*conv,dipvalz*conv))
+
+    fout.write('unpolarized (no embedding and no external field) dipole: \n')
+    fout.write('unpolarized electron dipole: %.16f, %.16f, %.16f a.u\n' %  (dipvalx*conv,dipvaly*conv,dipvalz*conv))
+    fout.write('Nuclear dipole:              %.16f, %.16f, %.16f a.u\n' %  (Ndip[0]*conv,Ndip[1]*conv,Ndip[2]*conv))
+    fout.write('total unpolarized  dipole:   %.16f, %.16f, %.16f a.u\n' %  ((dipvalx+Ndip[0])*conv,(dipvaly+Ndip[1])*conv,(dipvalz+Ndip[2])*conv))
     print("Ndip : %.8f, %.8f, %.8f\n" % (Ndip[0],Ndip[1],Ndip[2]))
+    fout.write('Final DFT energy: %.16f hartree' % (Eref)) 
     fout.close()
 
     init_stdout_redirect ()

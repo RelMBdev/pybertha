@@ -1,10 +1,9 @@
 import argparse
 import os.path
-import ctypes
-import numpy
 import shutil
+import numpy
+import uuid
 import sys
-import re
 import os
 
 import json
@@ -25,11 +24,9 @@ if modpaths is not None :
 import pyberthaembed
 import berthamod
 import rtutil
-import os.path
+import pybgen
 
 from pathlib import Path
-
-MAXIT = 100 
 
 ##########################################################################################
 
@@ -188,7 +185,6 @@ def main_loop (j, niter, bertha, pulse, pulseFmax, pulsew, propthresh, pulseS, t
         fo, D_ti, fock_mid_backwd, dt, dip_mat, C, C_inv, ovapm, 
         ndim, debug, Dp_ti, dip_list, ene_list, weight_list=None, 
         select="-2 ; 0 & 0"):
-
   
     fock_mid_tmp = rtutil.mo_fock_mid_forwd_eval(bertha, numpy.copy(D_ti), \
             fock_mid_backwd, j, numpy.float_(dt), dip_mat, C, C_inv, ovapm, \
@@ -269,6 +265,8 @@ def run_iterations_from_to (startiter, niter, bertha, embfactory, args, fock_mid
         fo, D_ti, occlist):
 
     dumpcounter = 0
+
+    bertha.checksetthreads()
     
     for j in range(startiter, niter):
 
@@ -354,7 +352,7 @@ def run_iterations_from_to (startiter, niter, bertha, embfactory, args, fock_mid
 
 ##########################################################################################
 
-def restart_run(args):
+def restart_run(pberthaopt, args):
     
     fp = open(args.restartfile, 'r')
     json_data = json.load(fp)
@@ -434,14 +432,22 @@ def restart_run(args):
     args.pulsew = json_data['pulsew'] 
     args.dt = json_data['dt']
     args.period = json_data['period']
-    args.inputfile = json_data['inputfile']
-    args.fittfile = json_data["fittfile"]
+    #args.inputfile = json_data['inputfile']
+    #args.fittfile = json_data["fittfile"]
     args.fitcoefffile = json_data["fitcoefffile"]
     args.vctfile = json_data["vctfile"]
     args.ovapfile = json_data["ovapfile"]
     args.dumpfiles = json_data["dumpfiles"]
     args.direction = json_data["direction"]
-    
+
+    args.geom_act = json_data['geom_act']
+    args.act_fittset = json_data['act_fittset']
+    args.act_func = json_data['act_func']
+    args.act_obs = json_data['act_obs']
+    args.convertlengthunit = json_data['convertlengthunit']
+    args.jsonbasisfile = json_data['jsonbasisfile']
+
+
     totaltime = json_data["totaltime"]
     if args.totaltime < totaltime:
         args.totaltime = json_data["totaltime"]
@@ -460,6 +466,25 @@ def restart_run(args):
     args.pulseS = json_data["pulseS"]
     args.t0 = json_data["t0"]
 
+    pberthaopt.fitcoefffile = json_data["fitcoefffile"]
+    pberthaopt.vctfile = json_data["vctfile"]
+    pberthaopt.ovapfile = json_data["ovapfile"]
+    pberthaopt.dumpfiles = json_data["dumpfiles"]
+    pberthaopt.debug = json_data["debug"]
+    pberthaopt.linemb = json_data["linemb"]
+    pberthaopt.verbosity = json_data["verbosity"]
+    pberthaopt.thresh = json_data["thresh"]
+    pberthaopt.thresh_conv = json_data["embthresh"]
+    pberthaopt.wrapperso = json_data["wrapperso"]
+    pberthaopt.nofde = json_data["nofde"]
+    #pberthaopt.eda_nocv_info = args.eda_nocv_info
+    #pberthaopt.eda_nocv_frag_file = args.eda_nocv_frag_file
+    pberthaopt.activefile = json_data["geom_act"]
+    pberthaopt.envirofile = json_data["geom_env"]
+    pberthaopt.gtype = json_data["grid_opts"]
+    pberthaopt.basis = json_data["env_obs"]
+    pberthaopt.excfuncenv = json_data["env_func"]
+
     molist = args.select.split("&")
     occlist = molist[0].split(";")
     occlist = [int(m) for m in occlist]
@@ -476,6 +501,34 @@ def restart_run(args):
         return False
     
     bertha = berthamod.pybertha(args.wrapperso)
+
+    pygenoption = pybgen.berthainputoption
+    pygenoption.inputfile = args.geom_act
+    pygenoption.jsonbasisfile = args.jsonbasisfile
+    pygenoption.fittset = args.act_fittset
+    pygenoption.basisset = args.act_obs
+    pygenoption.functxc = args.act_func
+    pygenoption.convertlengthunit = args.convertlengthunit
+    pygenoption.maxit = args.berthamaxit
+
+    #pberthaopt.inputfile = "input.inp"
+    #pberthaopt.fittfile = "fitt2.inp"
+    
+    args.inputfile = str(uuid.uuid4())
+    args.fittfile = str(uuid.uuid4())  
+
+    pygenoption.berthainfname = args.inputfile
+    pygenoption.berthafittfname = args.fittfile 
+
+    for filename in [args.inputfile , args.fittfile]:
+        if os.path.isfile(filename):
+            print("File ", filename, " will be overwritten")
+            try:
+                os.remove(filename)
+            except OSError:
+                pass
+
+    pybgen.generateinputfiles (pygenoption)
 
     # TODO to remove full run 
     ovapm, eigem, fockm, eigen = single_point (args, bertha)
@@ -504,14 +557,34 @@ def restart_run(args):
     fo = sys.stderr
     if debug:
         fo = open("debug_info.txt", "w")
+    # emfactory -> embedding potential corresponding to Da
+    activefname = pberthaopt.activefile
+    if not os.path.isfile(activefname):
+        raise Exception("File ", activefname , " does not exist")
     
+    envirofname = pberthaopt.envirofile
+    if not os.path.isfile(envirofname):
+        raise Exception("File ", envirofname , " does not exist")
+    
+    import pyembmod
+    # embfactory was missing here
+    embfactory = pyembmod.pyemb(activefname,envirofname,'adf') #jobtype='adf' is default de facto
+    #grid_param =[50,110] # psi4 grid parameters (see Psi4 grid table)
+    #embfactory.set_options(param=grid_param, \
+    embfactory.set_options(param=pberthaopt.param, \
+       gtype=pberthaopt.gtype, basis=pberthaopt.basis) 
+    embfactory.set_enviro_func(pberthaopt.excfuncenv)
+    # several paramenters to be specified in input- e.g AUG/ADZP for ADF, aug-cc-pvdz for psi4
+
+    embfactory.initialize()
+   
     return run_iterations_from_to (jstart+1, niter, bertha, embfactory, args, fock_mid_backwd, \
             dt, dip_mat, C, C_inv, ovapm, ndim, debug, Dp_ti, dip_list, ene_list, \
             weight_list, fo, D_ti, occlist)
  
 ##########################################################################################
 
-def normal_run(pberthaopt,args):
+def normal_run(pberthaopt, args):
 
     import pyembmod
     print("Options: ")
@@ -522,7 +595,6 @@ def normal_run(pberthaopt,args):
     if not os.path.isfile(pberthaopt.wrapperso):
         print("SO File ", pberthaopt.wrapperso, " does not exist")
         return False
-    
 
     ovapm, eigem, fockm, eigen, pot = pyberthaembed.runspberthaembed (pberthaopt, restart = False, stdoutprint = True)
     print("CHECK")
@@ -551,6 +623,9 @@ def normal_run(pberthaopt,args):
     grid = embfactory.get_grid() 
 
     bertha = berthamod.pybertha(pberthaopt.wrapperso)
+
+    bertha.set_fittfname(pberthaopt.fittfile)
+    bertha.set_fnameinput(pberthaopt.inputfile)
     
     bertha.init()
 
@@ -571,7 +646,6 @@ def normal_run(pberthaopt,args):
     # the embedding potential from converged density
     pot = embfactory.get_potential(density)
     bertha.set_embpot_on_grid(grid, pot)
-    
     
     bertha.realtime_init()
     
@@ -703,8 +777,6 @@ def normal_run(pberthaopt,args):
         #transform back Dp_int
         Da=numpy.matmul(C,numpy.matmul(Dp_init,numpy.conjugate(C.T)))
         D_0=Dp_init
-    
-
 
     print("Start first mo_fock_mid_forwd_eval ")
     
@@ -803,6 +875,8 @@ def normal_run(pberthaopt,args):
 
 def main():
 
+   MAXIT = 100 
+
    listpulses = ""
    for key in rtutil.funcswitcher:
        listpulses += key
@@ -818,10 +892,10 @@ def main():
            required=False, type=int, default=2)
    parser.add_argument("--act_obs", \
        help="Specify BERTHA (Active system) basisset \"atomname1:basisset1,atomname2:basisset2,...\"", \
-       required=True, type=str, default="")
+       required=False, type=str, default="")
    parser.add_argument("--act_fittset", \
        help="Specify BERTHA (Active system) fitting set \"atomname1:fittset1,atomname2:fittset2,...\"", \
-       required=True, type=str, default="")
+       required=False, type=str, default="")
    parser.add_argument("--act_func", help="Specify exchange–correlation energy functional for active system available: LDA,B88P86,HCTH93,BLYP (default=BLYP)", \
        type=str, default="BLYP")
    parser.add_argument("--env_obs", help="Specify the orbital basis set for the enviroment (default: AUG/ADZP)", required=False,
@@ -861,6 +935,8 @@ def main():
            default=1.0, type=numpy.float64)
    parser.add_argument("--pulse", help="Specify the pulse to use [" + listpulses + "] default kick", required=False, 
            type=str, default="kick")
+   parser.add_argument("--nofde", help="embedding off: just for test", required=False, 
+            default=False, action="store_true")
    parser.add_argument("--pulseFmax", help="Specify the pulse Fmax value (default: 0.0001)", 
            default=0.0001, type=numpy.float64)
    parser.add_argument("--pulsew", help="Specify the pulse w value if needed (default: 0.0)", 
@@ -894,6 +970,9 @@ def main():
            required=False, type=int, default=-1)
    parser.add_argument("--restart", help="restart run from file",
            required=False, default=False, action="store_true")
+
+   parser.add_argument("--berthamaxit", help="set bertha maxiterations (default = %d)"%(MAXIT),
+         required=False, type=int, default=MAXIT)
    
    args = parser.parse_args()
    for path in args.modpaths.split(";"):
@@ -904,57 +983,89 @@ def main():
         print ("  Removing "+ resdir )
         shutil.rmtree(resdir)
 
-   import pybgen
-
-   pygenoption_fraga = pybgen.berthainputoption
-   pygenoption_fraga.inputfile = args.geom_act
-   pygenoption_fraga.jsonbasisfile = args.jsonbasisfile
-   pygenoption_fraga.fittset = args.act_fittset
-   pygenoption_fraga.basisset = args.act_obs
-   pygenoption_fraga.functxc = args.act_func
-   pygenoption_fraga.convertlengthunit = args.convertlengthunit
-   pygenoption_fraga.maxit = MAXIT
-
-   for filename in ["input.inp", "fitt2.inp"]:
-     try:
-       os.remove(filename)
-     except OSError:
-       pass
-
-   pybgen.generateinputfiles (pygenoption_fraga)
+   if (not args.restart):
+      if (args.act_obs == "" or args.act_fittset == ""):
+         print("Need to specify act_obs and  act_fittset")
+         exit(1)
 
    pberthaopt = pyberthaembed.pyberthaembedoption
 
-   pberthaopt.fitcoefffile = args.fitcoefffile
-   pberthaopt.vctfile = args.vctfile
-   pberthaopt.ovapfile = args.ovapfile
-   pberthaopt.dumpfiles = args.dumpfiles
-   pberthaopt.debug = args.debug
-   pberthaopt.linemb = args.linemb
-   pberthaopt.verbosity = args.verbosity
-   pberthaopt.thresh = args.thresh
-   pberthaopt.thresh_conv = args.embthresh
-   pberthaopt.wrapperso = args.wrapperso
-   #pberthaopt.eda_nocv_info = args.eda_nocv_info
-   #pberthaopt.eda_nocv_frag_file = args.eda_nocv_frag_file
-   pberthaopt.activefile = args.geom_act
-   pberthaopt.envirofile = args.geom_env
-   pberthaopt.gtype = args.grid_opts
-   pberthaopt.basis = args.env_obs
-   pberthaopt.excfuncenv = args.env_func
+   if (not args.restart):
+
+      pygenoption_fraga = pybgen.berthainputoption
+
+      pygenoption_fraga.inputfile = args.geom_act
+      pygenoption_fraga.jsonbasisfile = args.jsonbasisfile
+      pygenoption_fraga.fittset = args.act_fittset
+      pygenoption_fraga.basisset = args.act_obs
+      pygenoption_fraga.functxc = args.act_func
+      pygenoption_fraga.convertlengthunit = args.convertlengthunit
+      pygenoption_fraga.maxit = args.berthamaxit
+
+      pberthaopt.inputfile = str(uuid.uuid4())
+      pberthaopt.fittfile = str(uuid.uuid4()) 
+
+      pygenoption_fraga.berthainfname = pberthaopt.inputfile 
+      pygenoption_fraga.berthafittfname = pberthaopt.fittfile
+
+      for filename in [pberthaopt.inputfile , \
+        pberthaopt.fittfile]:
+         if os.path.isfile(filename):
+             print("File ", filename, " will be overwritten")
+             try:
+                 os.remove(filename)
+             except OSError:
+                 pass
+
+      pybgen.generateinputfiles (pygenoption_fraga)
+
+      pberthaopt.fitcoefffile = args.fitcoefffile
+      pberthaopt.vctfile = args.vctfile
+      pberthaopt.ovapfile = args.ovapfile
+      pberthaopt.dumpfiles = args.dumpfiles
+      pberthaopt.debug = args.debug
+      pberthaopt.linemb = args.linemb
+      pberthaopt.verbosity = args.verbosity
+      pberthaopt.thresh = args.thresh
+      pberthaopt.thresh_conv = args.embthresh
+      pberthaopt.wrapperso = args.wrapperso
+      pberthaopt.nofde = args.nofde
+      #pberthaopt.eda_nocv_info = args.eda_nocv_info
+      #pberthaopt.eda_nocv_frag_file = args.eda_nocv_frag_file
+      pberthaopt.activefile = args.geom_act
+      pberthaopt.envirofile = args.geom_env
+      pberthaopt.gtype = args.grid_opts
+      pberthaopt.basis = args.env_obs
+      pberthaopt.excfuncenv = args.env_func
 
    if (not args.restart):
        if args.totaltime < 0.0:
            args.totaltime = 1.0
 
-       if (not normal_run (pberthaopt,args)):
-           exit(1)
+       if (not normal_run (pberthaopt, args)):
+          exit(1)
+
+       for filename in [pberthaopt.inputfile , \
+          pberthaopt.fittfile]:
+            if os.path.isfile(filename):
+              print("File ", filename, " will be removed")
+              try:
+                 os.remove(filename)
+              except OSError:
+                 pass
    else:
-      if (not restart_run (args)):
+      if (not restart_run (pberthaopt, args)):
            exit(1)
+
+      for filename in [args.inputfile , args.fittfile]:
+          if os.path.isfile(filename):
+              print("File ", filename, " will be removed")
+              try:
+                  os.remove(filename)
+              except OSError:
+                  pass
 
 ##########################################################################################
 
 if __name__ == "__main__":
     main()
-
