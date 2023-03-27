@@ -17,6 +17,18 @@ import os.path
 #sys.path.append(os.environ['RTHOME'])
 #sys.path.append(os.environ['PSIPATH'])
 
+#sys.path.append("/projectsn/mp1009_1/motas/9_bomme/software/xcfun/build/lib/python")
+#sys.path.append("/home/jam1042/anaconda3/envs/psi4env/lib/python3.10")
+#sys.path.append("/projectsn/mp1009_1/motas/9_bomme/software/pyadf/src")
+
+#os.environ['PYBERTHAROOT'] = "/projectsn/mp1009_1/motas/9_bomme/software/pybertha/"
+#os.environ['PYBERTHA_MOD_PATH'] = "/projectsn/mp1009_1/motas/9_bomme/software/pybertha/"
+#os.environ['RTHOME'] = "/projectsn/mp1009_1/motas/9_bomme/software/pybertha/psi4rt"
+#sys.path.append(os.environ['PYBERTHAROOT']+"/src")
+#sys.path.append(os.environ['RTHOME'])
+
+sys.path.append(os.environ['PYBERTHA_MOD_PATH'])
+
 import psi4
 import numpy as np
 import argparse

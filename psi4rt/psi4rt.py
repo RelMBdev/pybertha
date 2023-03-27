@@ -16,6 +16,16 @@ import pickle
 from json import encoder
 
 
+#os.environ['PYBERTHAROOT'] = "/projectsn/mp1009_1/motas/9_bomme/software/pybertha/"
+#os.environ['RTHOME'] = "/projectsn/mp1009_1/motas/9_bomme/software/pybertha/psi4rt"
+
+#sys.path.append("/projectsn/mp1009_1/motas/9_bomme/software/xcfun/build/lib/python")
+#sys.path.append("/home/jam1042/anaconda3/envs/psi4env/lib/python3.10")
+
+sys.path.append(os.environ['PYBERTHAROOT']+"/src")
+#sys.path.append(os.environ['RTHOME'])
+sys.path.append(os.environ['PYBERTHA_MOD_PATH'])
+
 ##########################################################################################
 
 def vctto_npcmplxarray (realp, imagp):
@@ -303,7 +313,8 @@ def normal_run_init (args):
     ######################################
     #memory
     psi4.set_memory(int(2e9))
-    psi4.set_num_threads(psi4_nthreads)
+    job_nthreads = int(os.getenv('OMP_NUM_THREADS',1))
+    psi4.set_num_threads(job_nthreads)
     #output
     psi4.core.set_output_file(dbgfnames[1], False)
     #basis set options etc
@@ -800,6 +811,7 @@ if __name__ == "__main__":
 
     start = time.time()
     cstart = time.process_time()
+    astart = time.perf_counter()
 
     print("Start main iterations \n")
     dumpcounter = 0
@@ -842,7 +854,8 @@ if __name__ == "__main__":
     fo.close()
     end = time.time()
     cend = time.process_time()
-    print("Time for %10d time iterations : (%.5f s, %.5f s)\n" %(niter+1,end-start,cend-cstart))
+    aend = time.perf_counter()
+    print("Time for %10d time iterations : (%.5f s, %.5f s, %.5f s)\n" %(niter+1,end-start,cend-cstart,aend-astart))
     t_point=np.linspace(0.0,niter*dt,niter+1)
     dip_t=2.00*np.array(dip_list).real + Ndip_dir
     ene_t=np.array(ene_list).real + Nuc_rep

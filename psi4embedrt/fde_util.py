@@ -6,6 +6,12 @@
 #sys.path.append("/home/matteod/pybertha/src")
 #sys.path.append("/home/matteod/build/pyadf/src")
 
+import tensorflow as tf
+from tensorflow.python.ops.numpy_ops import np_config
+np_config.enable_numpy_behavior()
+import tensorflow.experimental.numpy as tnp
+print('Num GPUs Available: ', len(tf.config.list_physical_devices('GPU')))
+
 import os
 import psi4
 import scipy.linalg
@@ -142,21 +148,27 @@ def phi_builder(mol,xs,ys,zs,ws,basis_set):
 
 def embpot2mat(phi,nbas,gfunc,ws,lpos):
     #compute  pot matrix
-    res = np.zeros((nbas,nbas),dtype=np.complex128) # check
-    tmp = np.einsum('pb,p,p,pa->ab', phi, gfunc, ws, phi)
+    res_ = np.zeros((nbas,nbas),dtype=np.complex128) # check
+    phi=tf.convert_to_tensor(phi)
+    gfunc=tf.convert_to_tensor(gfunc)
+    ws=tf.convert_to_tensor(ws.to_array())
+    tmp = tf.einsum('pb,p,p,pa->ab', phi, gfunc, ws, phi)
     #to check
     # Add the temporary back to the larger array by indexing, ensure it is symmetric
-    res[(lpos[:, None], lpos)] += 0.5 * (tmp + np.conjugate(tmp.T))
+    tmp_=(tmp + tf.math.conj(tmp.T))
+    res_[(lpos[:, None], lpos)] += 0.5 * tmp_.numpy()
+    res=tf.convert_to_tensor(res_)
     #check Vtmp and V
-    er = np.allclose(res,tmp,atol=1.0e-12)
+    er = tf.debugging.assert_near(res, tf.cast(tmp, tf.complex128), atol=1.0e-12)
     if  (not er):
       print("Check Vtmp and V")
     #print("N. basis funcs: %i\n" % nbas)
     #check if V has imag part
     if False:
-       print("V is real: %s\n" % (np.allclose(res.imag,np.zeros((nbas,nbas),dtype=np.float_),atol=1.0e-12)))
+       print("V is real: %s\n" % (tf.debugging.assert_near(res.imag, tf.zeros((nbas,nbas)), atol=1.0e-12)
+))
        np.savetxt("vemb.txt", res.real)
-    return res.real
+    return res.numpy().real
 
 def denstogrid(phi,D,S,ndocc):
     temp = np.matmul(S,np.matmul(D.real,S))
@@ -164,9 +176,10 @@ def denstogrid(phi,D,S,ndocc):
        eigvals,eigvecs=scipy.linalg.eigh(temp,S,eigvals_only=False)
     except scipy.linalg.LinAlgError:
         print("Error in scipy.linalg.eigh of inputted matrix")
-        return None 
+        return None
     Rocc = eigvecs[:,-ndocc:]
-    MO = np.matmul(phi,Rocc)
-    MOs = np.square(MO)
-    rho = np.einsum('pm->p',MOs)
-    return rho
+    Rocc = tf.convert_to_tensor(Rocc)
+    MO = tf.matmul(tf.convert_to_tensor(phi),Rocc)
+    MOs = tf.square(MO)
+    rho = tf.einsum('pm->p',MOs)
+    return rho.numpy()
