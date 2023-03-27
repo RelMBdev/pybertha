@@ -12,6 +12,8 @@ import scipy.linalg
 import numpy as np
 import pyadf
 from pyadf.Plot.GridFunctions import GridFunctionFactory
+import torch
+print(torch.cuda.is_available())
 
 
 def fcorr(emb_pot,dens_act,dens_env,alpha=0.1):
@@ -154,31 +156,43 @@ def phi_builder(xs,ys,zs,ws,basisobj):
 
 def embpot2mat(phi,nbas,gfunc,ws,lpos):
     #compute  pot matrix
-    res = np.zeros((nbas,nbas),dtype=np.complex128) # check
-    tmp = np.einsum('pb,p,p,pa->ab', phi, gfunc, ws, phi)
+    res_ = np.zeros((nbas,nbas),dtype=np.complex128) # check
+    phi=torch.from_numpy(phi)
+    gfunc=torch.from_numpy(gfunc)
+    ws=torch.from_numpy(ws.to_array())
+    tmp = torch.einsum('pb,p,p,pa->ab', phi, gfunc, ws, phi)
     #to check
     # Add the temporary back to the larger array by indexing, ensure it is symmetric
-    res[(lpos[:, None], lpos)] += 0.5 * (tmp + np.conjugate(tmp.T))
+    tmp_=(tmp + torch.conj(tmp.T))
+    res_[(lpos[:, None], lpos)] += 0.5 * tmp_.cpu().detach().numpy()
+    res=torch.from_numpy(res_)
     #check Vtmp and V
-    er = np.allclose(res,tmp,atol=1.0e-12)
+    er = torch.allclose(res,tmp.type(torch.complex128),atol=1.0e-12)
     if  (not er):
       print("Check Vtmp and V")
     #print("N. basis funcs: %i\n" % nbas)
     #check if V has imag part
     if False:
-       print("V is real: %s\n" % (np.allclose(res.imag,np.zeros((nbas,nbas),dtype=np.float_),atol=1.0e-12)))
+       print("V is real: %s\n" % (torch.allclose(res.imag,torch.zeros((nbas,nbas)).type(torch.float),atol=1.0e-12)))
        np.savetxt("vemb.txt", res.real)
-    return res.real
+    return res.cpu().detach().numpy().real
 
 def denstogrid(phi,D,S,ndocc):
+#    S=S.to_array()
+#    temp = torch.matmul(torch.from_numpy(S),torch.matmul(torch.from_numpy(D).real,torch.from_numpy(S)))
     temp = np.matmul(S,np.matmul(D.real,S))
-    try: 
+    try:
        eigvals,eigvecs=scipy.linalg.eigh(temp,S,eigvals_only=False)
-    except scipy.linalg.LinAlgError:
-        print("Error in scipy.linalg.eigh of inputted matrix")
-        return None 
+#       eigvals,eigvecs=torch.linalg.eigh(temp,torch.from_numpy(S),eigvals_only=False)
+#        eigvals, eigvecs = torch.lobpcg(A=temp, B=torch.from_numpy(S), k=int(temp.size()[0]/3)
+#                                         ,method='ortho')
+    except torch.linalg.LinAlgError:
+        print("Error in torch.linalg.eigh of inputted matrix")
+        return None
+#    eigvecs_=eigvecs.cpu().detach().numpy()
     Rocc = eigvecs[:,-ndocc:]
-    MO = np.matmul(phi,Rocc)
-    MOs = np.square(MO)
-    rho = np.einsum('pm->p',MOs)
-    return rho
+    Rocc = torch.from_numpy(Rocc)
+    MO = torch.matmul(torch.from_numpy(phi),Rocc)
+    MOs = torch.square(MO)
+    rho = torch.einsum('pm->p',MOs)
+    return rho.cpu().detach().numpy()

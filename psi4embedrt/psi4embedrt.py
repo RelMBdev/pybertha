@@ -3,6 +3,9 @@ import sys
 import time
 import shutil
 import os.path
+import torch
+print(torch.cuda.is_available())
+
 
 #sys.path.append("/home/matteod/build/xcfun/build/lib/python")
 #sys.path.append("/home/matteod/psi4conda/lib/python3.7")
@@ -924,7 +927,8 @@ if __name__ == "__main__":
        
        #dipz_mat is transformed to the reference MO basis
        dip_mo=np.matmul(np.conjugate(C.T),np.matmul(dipz_mat,C))
-       u0=util.exp_opmat(dip_mo,np.float_(-k))
+       dip_mo_=torch.from_numpy(dip_mo).type(torch.complex128)
+       u0=util.exp_opmat(dip_mo_,np.float_(-k)).cpu().detach().numpy()
        Dp_init= np.matmul(u0,np.matmul(Dp_0,np.conjugate(u0.T)))
        func_t0=k
        #backtrasform Dp_init
@@ -1029,8 +1033,21 @@ if __name__ == "__main__":
     
     print('Entering in the first step of propagation')
     
-    J0,Exc0,func_t0,F_t0,fock_mid_init=util.mo_fock_mid_forwd_eval(np.array(D),F,\
-                         0,np.float_(dt),H,I,dipz_mat,C,C_inv,S,nbf,imp_opts,func,fo,basisset,vemb)
+    D_=torch.from_numpy(np.array(D)).type(torch.complex128)
+    F_=torch.from_numpy(np.array(F)).type(torch.complex128)
+    H_=torch.from_numpy(np.array(H)).type(torch.complex128)
+    I_=torch.from_numpy(np.array(I)).type(torch.complex128)
+    dipz_mat_=torch.from_numpy(dipz_mat).type(torch.complex128)
+    C_=torch.from_numpy(C).type(torch.complex128)
+    C_inv_=torch.from_numpy(C_inv).type(torch.complex128)
+    S_=torch.from_numpy(S).type(torch.complex128)
+    vemb_=torch.from_numpy(vemb).type(torch.complex128)
+    
+    J0,Exc0,func_t0,F_t0,fock_mid_init=util.mo_fock_mid_forwd_eval(D_,F_,\
+                         0,np.float_(dt),H_,I_,dipz_mat_,C_,C_inv_,S_,nbf,imp_opts,func,fo,basisset,vemb_)
+    J0=J0.cpu().detach().numpy()
+    F_t0=F_t0.cpu().detach().numpy()
+    fock_mid_init=fock_mid_init.cpu().detach().numpy()
     
     #check hermicity of fock_mid_init
     
@@ -1043,7 +1060,8 @@ if __name__ == "__main__":
     fockp_mid_init=np.matmul(np.conjugate(C.T),np.matmul(fock_mid_init,C))
     
     #u=scipy.linalg.expm(-1.j*fockp_mid_init*dt)
-    u=util.exp_opmat(fockp_mid_init,np.float_(dt))
+    fockp_mid_init_=torch.from_numpy(fockp_mid_init).type(torch.complex128)
+    u=util.exp_opmat(fockp_mid_init_,np.float_(dt)).cpu().detach().numpy()
     
     temp=np.matmul(Dp_0,np.conjugate(u.T))
     
@@ -1068,7 +1086,9 @@ if __name__ == "__main__":
     #weighted dipole
     if (do_weighted == -2):
       D_mo0 = np.matmul(C0_inv,np.matmul(D,np.conjugate(C0_inv.T)))
-      res = util.dipoleanalysis(dipz_mo0,D_mo0,ndocc,occlist,virtlist,debug,False)
+      dipz_mo0_=torch.from_numpy(dipz_mo0)
+      D_mo0_=torch.from_numpy(D_mo0)
+      res = util.dipoleanalysis(dipz_mo0_,D_mo0_,ndocc,occlist,virtlist,debug,False).cpu().detach().numpy()
       weighted_dip.append(res)
     
     fock_mid_backwd=np.copy(fock_mid_init) #prepare the fock at the previous midpint
@@ -1137,14 +1157,30 @@ if __name__ == "__main__":
             ct_acc += cdiff
         #print("here, type(vemb) : %s\n" % type(vemb))
         #
-        J_i,Exc_i,func_ti,F_ti,fock_mid_tmp=util.mo_fock_mid_forwd_eval(np.copy(D_ti),fock_mid_backwd,\
-                               j,np.float_(dt),H,I,dipz_mat,C,C_inv,S,nbf,imp_opts,func,fo,basisset,vemb)
+
+        D_ti_=torch.from_numpy(np.array(D_ti)).type(torch.complex128)
+        fock_mid_backwd_=torch.from_numpy(fock_mid_backwd).type(torch.complex128)
+        H_=torch.from_numpy(H).type(torch.complex128)
+        I_=torch.from_numpy(I).type(torch.complex128)
+        dipz_mat_=torch.from_numpy(dipz_mat).type(torch.complex128)
+        C_=torch.from_numpy(C).type(torch.complex128)
+        C_inv_=torch.from_numpy(C_inv).type(torch.complex128)
+        S_=torch.from_numpy(S).type(torch.complex128)
+        vemb_=torch.from_numpy(vemb).type(torch.complex128)
+
+        J_i,Exc_i,func_ti,F_ti,fock_mid_tmp=util.mo_fock_mid_forwd_eval(D_ti_.clone(),fock_mid_backwd_,\
+                               j,np.float_(dt),H_,I_,dipz_mat_,C_,C_inv_,S_,nbf,imp_opts,func,fo,basisset,vemb_)
+        J_i=J_i.cpu().detach().numpy()
+        F_ti=F_ti.cpu().detach().numpy()
+        fock_mid_tmp=fock_mid_tmp.cpu().detach().numpy()
+
         fo.write('%.8f\n' % np.trace(np.matmul(S,D_ti)).real)
         Ah=np.conjugate(fock_mid_tmp.T)
         fo.write('Fock_mid hermitian: %s\n' % np.allclose(fock_mid_tmp,Ah))
         #transform fock_mid_init in MO basis
         fockp_mid_tmp=np.matmul(np.conjugate(C.T),np.matmul(fock_mid_tmp,C))
-        u=util.exp_opmat(np.copy(fockp_mid_tmp),np.float_(dt))
+        fockp_mid_tmp_=torch.from_numpy(fockp_mid_tmp).type(torch.complex128)
+        u=util.exp_opmat(fockp_mid_tmp_.clone(),np.float_(dt)).cpu().detach().numpy()
         #u=scipy.linalg.expm(-1.0j*fockp_mid_tmp*dt)
         #check u is unitary
         test_u=np.matmul(u,np.conjugate(u.T))
@@ -1166,7 +1202,9 @@ if __name__ == "__main__":
         if (do_weighted == -2):
           #weighted dipole 
           D_ti_mo0 = np.matmul(C0_inv,np.matmul(D_ti,np.conjugate(C0_inv.T)))
-          res = util.dipoleanalysis(dipz_mo0,D_ti_mo0,ndocc,occlist,virtlist,debug,False)
+          D_ti_mo0_=torch.from_numpy(D_ti_mo0)
+          dipz_mo0_=torch.from_numpy(dipz_mo0)
+          res = util.dipoleanalysis(dipz_mo0,D_ti_mo0,ndocc,occlist,virtlist,debug,False).cpu().detach().numpy()
           weighted_dip.append(res)
         #Energy expectation value at t = t_i 
         #Enuc_list.append(-func_ti*Ndip_dir+Nuc_rep) #just in case of non-zero nuclear dipole
