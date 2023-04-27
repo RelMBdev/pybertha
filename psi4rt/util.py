@@ -220,7 +220,7 @@ def mo_fock_mid_forwd_eval(D_ti,fock_mid_ti_backwd,i,delta_t,H,I,dipole,\
     else:
       if extpotin == None:
         extpot = 0
-    
+
     t_arg=tnp.float_(i)*tnp.float_(delta_t)
     
     func = rtutil.funcswitcher.get(imp_opts['imp_type'], lambda: rtutil.kick)

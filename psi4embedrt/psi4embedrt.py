@@ -158,8 +158,10 @@ def scfiterations (args, maxiter, jk, H, Cocc, func, wfn, D, vemb, E, Eold, \
        
             diis.add(F, diis_e)
        
-            # SCF energy and update
+            # SCF energy and update, if args.static_field=True 
+            # 2.0*H.vector_dot(D) include the contribution from the one-el operator -mu*Field_static
             SCF_E = 2.0*H.vector_dot(D) + Enuc + Exc + twoel
+         
        
             dRMS = diis_e.rms()
        

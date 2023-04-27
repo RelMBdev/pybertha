@@ -129,7 +129,7 @@ def get_elpot(xs,ys,zs,Dnew=None,wfn=None,update=False):
     Vvals = wfn.oeprop.Vvals()
   return Vvals, wfn
 
-
+# hinweis : puream basis set has to be used
 def phi_builder(xs,ys,zs,ws,basisobj):
   
   delta = 1.0e-2

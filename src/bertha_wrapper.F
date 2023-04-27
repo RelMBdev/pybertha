@@ -1,5 +1,10 @@
       module bertha_wrapper
 
+#ifdef USEOMPAPI 
+      USE OMP_LIB 
+c      USE mkl_service
+#endif 
+
       use, intrinsic :: iso_c_binding
 
       use spec, only: coord, znuc, cnuc, expset, iznuc, icrge, kvals,
@@ -107,7 +112,7 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
      + dist, r1x, r1y, r1z, d1, r2x, 
      + r2y, r2z, d2, scprod, ang, diff, eold, oldecoul, rthresh1, 
      + rthresh2, efittcoulplusexc, efittcoul, etemp, excfit, 
-     + exc, cputime11, timetomt1, ffre,
+     + exc, cputime11, wtime11, timetomt1, ffre,
      + ctimetomt1, timetomt2, ctimetomt2, wtimeiter, 
      + ctimeiter, ctime1, time1, ffim, ecoul
 
@@ -122,7 +127,30 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
       logical :: filefound
 
+#ifdef USEOMPAPI 
+      character(len=255) :: evariable
+      integer :: nt, io
+
+c      write(*,*) "Proc number: ", omp_get_num_procs()
+c      write(*,*) "Max thread Number: ", omp_get_max_threads()
+c      write(*,*) "Num of Threads: ", omp_get_num_threads()
+
+      call get_environment_variable("OMP_NUM_THREADS", evariable)
+c      print *, "'",evariable,"'"
+      read(evariable,*,IOSTAT=io) nt
+      if (io .lt. 0) then 
+         CALL OMP_SET_NUM_THREADS(1) 
+      else
+         if (nt .ne. omp_get_num_threads()) CALL OMP_SET_NUM_THREADS(nt)
+      endif
+
+c      write(*,*) "Num of Threads: ", omp_get_num_threads()
+c      WRITE (*,*) "OMP_NUM_THREADS : ", evariable
+c      call mkl_set_num_threads(nt)
+#endif
+
       cputime11 = cputime ()
+      wtime11 = walltime ()
 
       if (restartmem) irun = 0
 
@@ -315,17 +343,28 @@ c          print *, "Here " , ndim, nocc
 
         v=v+zz
 
-        if (addpot) then 
+        if (addpot) then
+
           allocate(pp(nfitt),stat=rc)
+
+          time1 = walltime ()
+          ctime1 = cputime()
+
           if (rc.ne.0) call errmsg('error allocating memory')
 
-          if (associated(pot))     npoints = SIZE(pot) 
-          
+          if (associated(pot))     npoints = SIZE(pot)
+
           if (associated(grid))    call onel_pot_from_grid(grid, pot, npoints, nfitt, fitcase, pp)
-          
+
+          time1 = walltime () - time1
+          ctime1 = cputime() - ctime1
+
+          if (verbose .eq. 1) write (*, 6662 ) time1, ctime1
+
           v = v + pp 
           deallocate(pp)
         endif
+
 
         fock=(0.0,0.0) 
 
@@ -440,12 +479,25 @@ c          print *, "Here " , ndim, nocc
 !  For Embedding
 
         if (addpot) then
+
           allocate(pp(nfitt),stat=rc)
+
+          time1 = walltime ()
+          ctime1 = cputime()
+
           if (rc.ne.0) call errmsg('error allocating memory')
 
           if (associated(pot))     npoints = SIZE(pot)
 
           if (associated(grid))    call onel_pot_from_grid(grid, pot, npoints, nfitt, fitcase, pp)
+
+          time1 = walltime () - time1
+          ctime1 = cputime() - ctime1
+
+        if (verbose .eq. 1) write (*, 6662 ) time1, ctime1
+ 6662   format ('Time for onel_pot_from_grid (include int(Vexc|f_t) + FactlU)  walltime                   ', f10.2,
+     +  '  cputime ', f10.2,/)
+
 
           v = v + pp
 
@@ -736,11 +788,12 @@ c        end do
         wtimeiter = walltime () - wtimeiter
         ctimeiter = cputime () - ctimeiter
 
-        if (verbose .eq. 1) write (0, 777)
-        if (verbose .eq. 1) write (0, 6666) iter, wtimeiter, ctimeiter
+        if (verbose .eq. 1) write (6, 777)
+        if (verbose .eq. 1) write (6, 6666) iter, wtimeiter, ctimeiter
       endif
 
-      cputime11 = cputime11 - cputime ()
+      cputime11 = cputime () - cputime11 
+      wtime11   = walltime () - wtime11 
 
       if (verbose .eq. 1) then
        write(6,*) ' '
@@ -751,7 +804,8 @@ c        end do
        write(6,*) 'bond length = ',coord(3,2)
        write(6,*) 'total energy = ',etotal+erep-(nocc*sfact)
        write(6,*) ' '
-       write(6,*) 'total cpu-time used (sec):', cputime11
+       write(6,*) 'total  cpu-time used (sec):', cputime11
+       write(6,*) 'total wall-time used (sec):', wtime11
        write(6,*) '**********************************************'
       endif
 
@@ -768,7 +822,7 @@ c     call getresourcesusage ()
       !call gencubefile(ncent,coord,iznuc,nfitt,fitcase)
       wtimeiter = walltime () - wtimeiter
 
-      if (verbose .eq. 1) write (0, 6679) wtimeiter
+      if (verbose .eq. 1) write (6, 6679) wtimeiter
  6679 format ('Time for cube is: ', f8.4)
 
       call flush(6)
@@ -805,6 +859,19 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       use realtime
 
       implicit none
+
+#ifdef USEOMPAPI 
+      character(len=255) :: evariable
+      integer :: nt, io
+
+      call get_environment_variable("OMP_NUM_THREADS", evariable)
+      read(evariable,*,IOSTAT=io) nt
+      if (io .lt. 0) then 
+         CALL OMP_SET_NUM_THREADS(1) 
+      else
+         if (nt .ne. omp_get_num_threads()) CALL OMP_SET_NUM_THREADS(nt)
+      endif
+#endif
 
       call allocate_real_time(ndim)
 
@@ -868,6 +935,26 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       call eps (x, y, z, val)
 
       end subroutine bertha_eps
+
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+
+      subroutine bertha_checksetthreads ()
+
+#ifdef USEOMPAPI 
+      character(len=255) :: evariable
+      integer :: nt, io
+
+      call get_environment_variable("OMP_NUM_THREADS", evariable)
+      read(evariable,*,IOSTAT=io) nt
+      if (io .lt. 0) then 
+         CALL OMP_SET_NUM_THREADS(1) 
+      else
+         if (nt .ne. omp_get_num_threads()) CALL OMP_SET_NUM_THREADS(nt)
+      endif
+
+c      print *, "threads: ", nt
+#endif
+      end subroutine bertha_checksetthreads
 
 ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
@@ -1186,6 +1273,10 @@ c      print*, 'end bertha_get_density_ongrid'
 
       allocate(hgf(nfitt))
 
+!$OMP PARALLEL DO SCHEDULE(RUNTIME)
+!$OMP&   DEFAULT(NONE)
+!$OMP&   SHARED(npoints,grid,cfit,nfitt,fitcase,density)
+!$OMP&   PRIVATE(i,x,y,z,rho,hgf)
       do i=1,npoints
 c        write(*, '(A,F20.5,F20.5,F20.5,F20.5)'), "FORTRAN L: ", 
 c     +     grid(1,i), grid(2,i), grid(3,i), grid(4,i)
@@ -1199,6 +1290,7 @@ c     do we need to multiply by the Weight ?
 c        density(i) = rho * grid(4,i) 
         density(i) = rho
       enddo
+!$OMP END PARALLEL DO
 
 c      print*, 'Tot number el.', dot_product(density(:),grid(4,:))     
 c     call function in bertha_ng return density 

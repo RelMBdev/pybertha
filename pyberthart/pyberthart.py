@@ -1,9 +1,8 @@
 import argparse
 import os.path
-import ctypes
 import numpy
+import uuid
 import sys
-import re
 import os
 
 import json
@@ -63,25 +62,106 @@ def get_json_data(args, j, niter, ndim, ene_list, \
 
 ##########################################################################################
 
-def single_point (args, bertha):
+def single_point (args, bertha, filenames):
 
     fittcoefffname = args.fitcoefffile
     vctfilename = args.vctfile
     ovapfilename = args.ovapfile
     
-    fnameinput = args.inputfile
-    if not os.path.isfile(fnameinput):
-        print("File ", fnameinput, " does not exist")
-        return None, 
+    fnameinput =""
+    fittfname =""
+
+    generatedinout = False
+
+    if args.geometry != "":
+        
+        if not os.path.isfile (args.geometry):
+            print("File ", args.geometry, " does not exist")
+            exit(1)
+
+        if args.fittset == "" or args.obs == "":
+            print("Need to specify fittset and basis set for each elements")
+            exit(1)
+
+        # generate input 
+        import pybgen
+
+        pygenoption = pybgen.berthainputoption
+
+        pygenoption.inputfile = args.geometry
+        pygenoption.jsonbasisfile = args.jsonbasisfile
+        pygenoption.fittset = args.fittset
+        pygenoption.basisset = args.obs
+        pygenoption.functxc = args.func
+        pygenoption.convertlengthunit = args.convertlengthunit
+        pygenoption.maxit = args.berthamaxit
+
+        fnameinput = str(uuid.uuid4())
+        fittfname = str(uuid.uuid4())  
+
+        pygenoption.berthainfname = fnameinput
+        pygenoption.berthafittfname = fittfname
+
+        filenames.append(fnameinput)
+        filenames.append(fittfname)
+
+        for filename in filenames:
+
+            if os.path.isfile(filename):
+                print("File ", filename, " will be overwritten")
+                try:
+                    os.remove(filename)
+                except OSError:
+                    pass
+
+        pybgen.generateinputfiles (pygenoption)  
+
+        generatedinout = True
+    else:
+        fnameinput = args.inputfile
+        if not os.path.isfile(fnameinput):
+            print("File ", fnameinput, " does not exist")
+            return None, 
     
-    fittfname = args.fittfile
-    if not os.path.isfile(fittfname):
-        print("File ", fittfname , " does not exist")
-        return None, 
+        fittfname = args.fittfile
+        if not os.path.isfile(fittfname):
+            print("File ", fittfname , " does not exist")
+            return None, 
     
     verbosity = args.verbosity
     dumpfiles = int(args.dumpfiles)
+
+    gridfilename = ""
+    potfilename = ""
+   
+    if args.addgridpot != "":
+     if len(args.addgridpot.split(";")) == 2:
+        gridfilename = args.addgridpot.split(";")[0]
+        potfilename = args.addgridpot.split(";")[1]
+     else:
+        print("ERROR in --addgridpot, you need to specify two filenames ; separated")
+        exit(1)
     
+    if gridfilename != "" and \
+        potfilename != "":
+
+        if os.path.isfile(gridfilename) and \
+            os.path.isfile(potfilename):
+            grid = berthamod.read_sgrid_file (gridfilename)
+            pot = berthamod.read_pot_file (potfilename)
+
+            if (pot is not None) and (grid is not None):
+                if grid.shape[0] == pot.shape[0]:
+                    bertha.set_embpot_on_grid(grid, pot)
+                    print("Add external potetial ")
+                else:
+                    print("ERROR: grid and pot files are not compatible")
+                    exit(1)
+        else:
+            print("ERROR: "+ gridfilename + " and/or " + 
+               potfilename + " do not exist")
+            exit(1)
+
     bertha.set_fittcoefffname(fittcoefffname)
     bertha.set_ovapfilename(ovapfilename)
     bertha.set_vctfilename(vctfilename)
@@ -132,7 +212,8 @@ def single_point (args, bertha):
                     " (CPU time: %15.5f"%(berthacend - berthacstart), ") s ")
     
     sys.stdout.flush()
-    
+
+
     print("")
     print("Final results ")
     sum=0.0
@@ -150,7 +231,7 @@ def single_point (args, bertha):
     print("total energy             = %20.8f"%(etotal+erep-(sfact*nocc)))
     print(" ")
  
-    return ovapm, eigem, fockm, eigen
+    return ovapm, eigem, fockm, eigen, generatedinout
 
 ##########################################################################################
 
@@ -367,7 +448,7 @@ def run_iterations_from_to (startiter, niter, bertha, args, fock_mid_backwd, dt,
 
 ##########################################################################################
 
-def restart_run(args):
+def restart_run(args, filenames):
     
     fp = open(args.restartfile, 'r')
     json_data = json.load(fp)
@@ -442,6 +523,7 @@ def restart_run(args):
 
         weight_list.append(row)
 
+    args.addgridpot = json_data['addgridpot']
     args.pulse = json_data['pulse']
     args.pulseFmax = json_data['pulseFmax']
     args.pulsew = json_data['pulsew'] 
@@ -490,7 +572,8 @@ def restart_run(args):
     bertha = berthamod.pybertha(args.wrapperso)
 
     # TODO to remove full run 
-    ovapm, eigem, fockm, eigen = single_point (args, bertha)
+    ovapm, eigem, fockm, eigen, generatedinout = single_point (args, bertha, \
+        filenames)
     if ovapm is None:
         return False
 
@@ -499,6 +582,34 @@ def restart_run(args):
     nocc = bertha.get_nocc()
  
     bertha.realtime_init()
+
+    if args.addgridpot != "":
+     if len(args.addgridpot.split(";")) == 2:
+        gridfilename = args.addgridpot.split(";")[0]
+        potfilename = args.addgridpot.split(";")[1]
+     else:
+        print("ERROR in --addgridpot, you need to specify two filenames ; separated")
+        exit(1)
+    
+     if gridfilename != "" and \
+         potfilename != "":
+     
+         if os.path.isfile(gridfilename) and \
+             os.path.isfile(potfilename):
+             grid = berthamod.read_sgrid_file (gridfilename)
+             pot = berthamod.read_pot_file (potfilename)
+     
+             if (pot is not None) and (grid is not None):
+                 if grid.shape[0] == pot.shape[0]:
+                     bertha.set_embpot_on_grid(grid, pot)
+                     print("Add external potetial ")
+                 else:
+                     print("ERROR: grid and pot files are not compatible")
+                     exit(1)
+         else:
+             print("ERROR: "+ gridfilename + " and/or " + 
+                potfilename + " do not exist")
+             exit(1)
     
     print("Start RT")
     
@@ -519,11 +630,11 @@ def restart_run(args):
     
     return run_iterations_from_to (jstart+1, niter, bertha, args, fock_mid_backwd, \
             dt, dip_mat, C, C_inv, ovapm, ndim, debug, Dp_ti, dip_list, ene_list, \
-            weight_list, fo, D_ti, occlist)
+            weight_list, fo, D_ti, occlist), generatedinout
  
 ##########################################################################################
 
-def normal_run(args):
+def normal_run(args, filenames):
 
     print("Options: ")
     print(args) 
@@ -536,7 +647,8 @@ def normal_run(args):
     
     bertha = berthamod.pybertha(args.wrapperso)
 
-    ovapm, eigem, fockm, eigen = single_point (args, bertha)
+    ovapm, eigem, fockm, eigen, generatedinout = single_point (args, bertha, \
+        filenames)
     if ovapm is None:
         return False
 
@@ -545,6 +657,34 @@ def normal_run(args):
     nocc = bertha.get_nocc()
     
     bertha.realtime_init()
+
+    if args.addgridpot != "":
+     if len(args.addgridpot.split(";")) == 2:
+        gridfilename = args.addgridpot.split(";")[0]
+        potfilename = args.addgridpot.split(";")[1]
+     else:
+        print("ERROR in --addgridpot, you need to specify two filenames ; separated")
+        exit(1)
+    
+     if gridfilename != "" and \
+         potfilename != "":
+     
+         if os.path.isfile(gridfilename) and \
+             os.path.isfile(potfilename):
+             grid = berthamod.read_sgrid_file (gridfilename)
+             pot = berthamod.read_pot_file (potfilename)
+     
+             if (pot is not None) and (grid is not None):
+                 if grid.shape[0] == pot.shape[0]:
+                     bertha.set_embpot_on_grid(grid, pot)
+                     print("Add external potetial ")
+                 else:
+                     print("ERROR: grid and pot files are not compatible")
+                     exit(1)
+         else:
+             print("ERROR: "+ gridfilename + " and/or " + 
+                potfilename + " do not exist")
+             exit(1)
     
     print("Start RT")
     
@@ -760,11 +900,13 @@ def normal_run(args):
 
     return run_iterations_from_to (1, niter, bertha, args, fock_mid_backwd, \
             dt, dip_mat, C, C_inv, ovapm, ndim, debug, Dp_ti, dip_list, ene_list, \
-            weight_list, fo, D_ti, occlist)
+            weight_list, fo, D_ti, occlist), generatedinout
     
 ##########################################################################################
 
 def main():
+
+   MAXIT = 100
 
    listpulses = ""
    for key in rtutil.funcswitcher:
@@ -824,18 +966,60 @@ def main():
            required=False, type=int, default=-1)
    parser.add_argument("--restart", help="restart run from file",
            required=False, default=False, action="store_true")
-   
+
+   parser.add_argument("-g","--geometry", help="Specify system (Angstrom) geometry", required=False, 
+        type=str, default="")
+   parser.add_argument("--obs", \
+        help="Specify BERTHA basisset \"atomname1:basisset1,atomname2:basisset2,...\"", \
+        required=False, type=str, default="")
+   parser.add_argument("--fittset", \
+        help="Specify BERTHA fitting set \"atomname1:fittset1,atomname2:fittset2,...\"", \
+        required=False, type=str, default="")
+   parser.add_argument("--func", 
+	    help="Specify exchange–correlation energy functional for active system available: LDA,B88P86,HCTH93,BLYP (default=BLYP)", \
+        type=str, default="BLYP")
+   parser.add_argument("-j","--jsonbasisfile", \
+        help="Specify BERTHA JSON file for fitting and basis (default: fullsets.json)", \
+       required=False, type=str, default="fullsets.json")
+   parser.add_argument("--convertlengthunit", help="Specify a length converter [default=1.0]", \
+        type=float, default=1.0)
+   parser.add_argument("--berthamaxit", help="set bertha maxiterations (default = %d)"%(MAXIT), 
+        required=False, type=int, default=MAXIT)
+   parser.add_argument("--addgridpot", help="Import a custom grid potential [\"gridfile.txt;pofile.txt\"]", required=False,
+            type=str, default="")
+
    args = parser.parse_args()
 
+   modpaths = os.environ.get('PYBERTHA_MOD_PATH')
+
+   if modpaths is not None :
+        for path in modpaths.split(";"):
+          sys.path.append(path)
+
+   generatedinout = False
+   filenames = []
+           
    if (not args.restart):
        if args.totaltime < 0.0:
            args.totaltime = 1.0
 
-       if (not normal_run (args)):
+       error, generatedinout = normal_run (args, filenames)
+       if (not error):
            exit(1)
    else:
-      if (not restart_run (args)):
+      error, generatedinout = restart_run (args, filenames)
+      if (error):
            exit(1)
+
+   if generatedinout:
+        
+        for filename in filenames:
+            if os.path.isfile(filename):
+                print("File ", filename, " will be removed")
+                try:
+                    os.remove(filename)
+                except OSError:
+                    pass
 
 ##########################################################################################
 

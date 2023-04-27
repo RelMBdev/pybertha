@@ -1,5 +1,15 @@
 To run a quick test:
 
+export BerthaRootPath=/home/redo/Project_Bertha/
+
+export PYBERTHA_MOD_PATH=$BerthaRootPath"pybertha/pyemb;"$BerthaRootPathxcfun"xcfun/build/lib/python;"$BerthaRootPathx"pybertha/src;"$BerthaRootPath"pyadf/src;"$BerthaRootPath"berthaingen/pybgen;"$BerthaRootPathxcfun"pybertha/psi4rt;"$BerthaRootPath"pybertha/pyberthaemb;"$BerthaRootPath"pybertha/pyberthaembed"
+
 $ export LD_LIBRARY_PATH=${PWD%/*}"/lib":$LD_LIBRARY_PATH
+
+$ ulimit  -s unlimited
+
 $ python3 pyberthart.py
 
+or:
+
+$ python3 pyberthart.py -g H2O.xyz --fittset "H:aux4,O:aux4" --obs "H:aug-cc-pvdz,O:aug-cc-pvdz" --convertlengthunit=1.88972598 --addgridpot "gridRn.txt;RnEMB_ModelPot_forRn.txt"
