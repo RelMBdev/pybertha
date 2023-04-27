@@ -15,6 +15,11 @@ import json
 import pickle 
 from json import encoder
 
+import tensorflow as tf
+from tensorflow.python.ops.numpy_ops import np_config
+np_config.enable_numpy_behavior()
+import tensorflow.experimental.numpy as tnp
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
 #os.environ['PYBERTHAROOT'] = "/projectsn/mp1009_1/motas/9_bomme/software/pybertha/"
 #os.environ['RTHOME'] = "/projectsn/mp1009_1/motas/9_bomme/software/pybertha/psi4rt"
@@ -28,26 +33,26 @@ sys.path.append(os.environ['PYBERTHA_MOD_PATH'])
 
 ##########################################################################################
 
-def vctto_npcmplxarray (realp, imagp):
+def vctto_tnpcmplxarray (realp, imagp):
 
-    list_REAL = np.float_(realp)
-    list_IMAG = np.float_(imagp)
+    list_REAL = tnp.float_(realp)
+    list_IMAG = tnp.float_(imagp)
 
     if len(list_REAL) != len(list_IMAG):
         return None
 
     rlist = []
     for i in range(len(list_REAL)):
-        rlist.append(np.complex128(complex(list_REAL[i], list_IMAG[i])))
+        rlist.append(tnp.complex128(complex(list_REAL[i], list_IMAG[i])))
 
     return rlist
 
 ##########################################################################################
 
-def mtxto_npcmplxarray (realp, imagp):
+def mtxto_tnpcmplxarray (realp, imagp):
 
-    list_REAL = np.float_(realp)
-    list_IMAG = np.float_(imagp)
+    list_REAL = tnp.float_(realp)
+    list_IMAG = tnp.float_(imagp)
 
     if len(list_REAL) != len(list_IMAG):
         return None
@@ -58,10 +63,10 @@ def mtxto_npcmplxarray (realp, imagp):
         if len(list_REAL[i]) != len(list_IMAG[i]):
             return None
         
-        row = np.zeros(len(list_REAL[i]), dtype=np.complex128)
+        row = tnp.zeros(len(list_REAL[i]), dtype=tnp.complex128)
 
         for j in range(len(list_REAL[i])):
-            row[j] = np.complex128(complex(list_REAL[i][j],
+            row[j] = tnp.complex128(complex(list_REAL[i][j],
                 list_IMAG[i][j]))
                 
         rlist.append(row)
@@ -119,23 +124,23 @@ def get_json_data(args, D_ti, fock_mid_backwd, j, dt, H, I, dip_mat, \
         "HL" : HL,
         "Enuc_list" : Enuc_list,
         "imp_opts" : imp_opts,
-        'ene_list_REAL': np.real(ene_list).tolist(),
-        'ene_list_IMAG': np.imag(ene_list).tolist(),
-        'dip_list_REAL': np.real(dip_list).tolist(),
-        'dip_list_IMAG': np.imag(dip_list).tolist(),
-        'weighted_dip_REAL': np.real(weighted_dip).tolist(),
-        'weighted_dip_IMAG': np.imag(weighted_dip).tolist(),
-        'D_ti_REAL' : np.real(D_ti).tolist(),
-        'D_ti_IMAG' : np.imag(D_ti).tolist(),
-        'fock_mid_backwd_REAL' : np.real(fock_mid_backwd).tolist(),
-        'fock_mid_backwd_IMAG' : np.imag(fock_mid_backwd).tolist(),
-        'Dp_ti_REAL': np.real(Dp_ti).tolist(),
-        'Dp_ti_IMAG': np.imag(Dp_ti).tolist()
+        'ene_list_REAL': tnp.real(ene_list).tolist(),
+        'ene_list_IMAG': tnp.imag(ene_list).tolist(),
+        'dip_list_REAL': tnp.real(dip_list).tolist(),
+        'dip_list_IMAG': tnp.imag(dip_list).tolist(),
+        'weighted_dip_REAL': tnp.real(weighted_dip).tolist(),
+        'weighted_dip_IMAG': tnp.imag(weighted_dip).tolist(),
+        'D_ti_REAL' : tnp.real(D_ti).tolist(),
+        'D_ti_IMAG' : tnp.imag(D_ti).tolist(),
+        'fock_mid_backwd_REAL' : tnp.real(fock_mid_backwd).tolist(),
+        'fock_mid_backwd_IMAG' : tnp.imag(fock_mid_backwd).tolist(),
+        'Dp_ti_REAL': tnp.real(Dp_ti).tolist(),
+        'Dp_ti_IMAG': tnp.imag(Dp_ti).tolist()
         }
 
     if extpot != None:
-        json_data['extpot_REAL'] = np.real(extpot).tolist()
-        json_data['extpot_IMAG'] = np.imag(extpot).tolist()
+        json_data['extpot_REAL'] = tnp.real(extpot).tolist()
+        json_data['extpot_IMAG'] = tnp.imag(extpot).tolist()
 
     json_data.update(othervalues)
 
@@ -159,32 +164,32 @@ def main_loop (D_ti, fock_mid_backwd, j, dt, H, I, dip_mat, C, C_inv, S, nbf, \
                 fock_mid_backwd,j,dt,H,I,dip_mat,C,C_inv,S,nbf,\
                 imp_opts,func,fo,basisset, extpot)
         
-    Ah=np.conjugate(fock_mid_tmp.T)
-    fo.write('Fock_mid hermitian: %s\n' % np.allclose(fock_mid_tmp,Ah))
+    Ah=tnp.conjugate(fock_mid_tmp.T)
+    fo.write('Fock_mid hermitian: %s\n' % tnp.allclose(fock_mid_tmp,Ah))
     #transform fock_mid_init in MO basis
-    fockp_mid_tmp=np.matmul(np.conjugate(C.T),np.matmul(fock_mid_tmp,C))
-    u=util.exp_opmat(np.copy(fockp_mid_tmp),dt)
+    fockp_mid_tmp=tnp.matmul(tnp.conjugate(C.T),tnp.matmul(fock_mid_tmp,C))
+    u=util.exp_opmat(tnp.copy(fockp_mid_tmp),dt)
     #u=scipy.linalg.expm(-1.0j*fockp_mid_tmp*dt)
     #check u is unitary
-    test_u=np.matmul(u,np.conjugate(u.T))
-    if (not np.allclose(np.eye(u.shape[0]),test_u)):
+    test_u=tnp.matmul(u,tnp.conjugate(u.T))
+    if (not tnp.allclose(tnp.eye(u.shape[0]),test_u)):
         print('U is not unitary\n')
     
     #check the trace of density to evolve
-    fo.write('tr of density to evolve: %.8f\n' % np.trace(Dp_ti).real)
+    fo.write('tr of density to evolve: %.8f\n' % tf.math.real(tnp.trace(Dp_ti)))
     
     #evolve the density in orthonormal basis
-    temp=np.matmul(Dp_ti,np.conjugate(u.T))
-    Dp_ti_dt=np.matmul(u,temp)
+    temp=tnp.matmul(Dp_ti,tnp.conjugate(u.T))
+    Dp_ti_dt=tnp.matmul(u,temp)
     
     #backtransform Dp_ti_dt
-    D_ti_dt=np.matmul(C,np.matmul(Dp_ti_dt,np.conjugate(C.T)))
-    fo.write('%.8f\n' % np.trace(Dp_ti_dt).real)
+    D_ti_dt=tnp.matmul(C,tnp.matmul(Dp_ti_dt,tnp.conjugate(C.T)))
+    fo.write('%.8f\n' % tf.math.real(tnp.trace(Dp_ti_dt)))
     #dipole expectation for D_ti
-    dip_list.append(np.trace(np.matmul(dip_mat,D_ti)))
+    dip_list.append(tnp.trace(tnp.matmul(dip_mat,D_ti)))
     
     if debug:
-        fo.write('Dipole  %.8f %.15f\n' % (j*dt, 2.00*dip_list[j].real))
+        fo.write('Dipole  %.8f %.15f\n' % (j*dt, 2.00*tf.math.real(dip_list[j])))
     
     if (do_weighted == -2):
         #weighted dipole 
@@ -193,9 +198,9 @@ def main_loop (D_ti, fock_mid_backwd, j, dt, H, I, dip_mat, C, C_inv, S, nbf, \
     #Energy expectation value at t = t_i 
     Enuc_list.append(-func_ti*Ndip_dir+Nuc_rep) #just in case of non-zero nuclear dipole
     if (func=='hf'):
-        ene_list.append(np.trace(np.matmul(D_ti,(H+F_ti))))
+        ene_list.append(tnp.trace(tnp.matmul(D_ti,(H+F_ti))))
     else:
-        ene_list.append(2.00*np.trace(np.matmul(D_ti,H))+J_i+Exc_i-np.trace(np.matmul(D_ti,(func_ti*dip_mat))))
+        ene_list.append(2.00*tnp.trace(tnp.matmul(D_ti,H))+J_i+Exc_i-tnp.trace(tnp.matmul(D_ti,(func_ti*dip_mat))))
     imp_list.append(func_ti)
     
     #update D_ti and Dp_ti for the next step
@@ -203,10 +208,10 @@ def main_loop (D_ti, fock_mid_backwd, j, dt, H, I, dip_mat, C, C_inv, S, nbf, \
     if debug :
         fo.write('here I update the matrices Dp_ti and D_ti\n')
     
-    D_ti=np.copy(D_ti_dt)
-    Dp_ti=np.copy(Dp_ti_dt)
+    D_ti=tnp.copy(D_ti_dt)
+    Dp_ti=tnp.copy(Dp_ti_dt)
     #update fock_mid_backwd for the next step
-    fock_mid_backwd=np.copy(fock_mid_tmp)
+    fock_mid_backwd=tnp.copy(fock_mid_tmp)
 
     return fock_mid_backwd, D_ti, Dp_ti
 
@@ -306,15 +311,14 @@ def normal_run_init (args):
         analytic = False
 
     #dt in a.u
-    dt = np.float_(calc_params['delta_t'])
+    dt = tnp.float_(calc_params['delta_t'])
     #time_int in atomic unit
     time_int = calc_params['time_int']
     niter = int(time_int/dt)
     ######################################
     #memory
     psi4.set_memory(int(2e9))
-    job_nthreads = int(os.getenv('OMP_NUM_THREADS',1))
-    psi4.set_num_threads(job_nthreads)
+    psi4.set_num_threads(psi4_nthreads)
     #output
     psi4.core.set_output_file(dbgfnames[1], False)
     #basis set options etc
@@ -332,14 +336,14 @@ def normal_run_init (args):
     
     #initialize mints object
     mints = psi4.core.MintsHelper(mol_wfn.basisset())
-    S = np.array(mints.ao_overlap())
+    S = tnp.array(mints.ao_overlap().to_array())
     #get T,V,dipole_z
-    T = np.array(mints.ao_kinetic())
-    V = np.array(mints.ao_potential())
+    T = tnp.array(mints.ao_kinetic().to_array())
+    V = tnp.array(mints.ao_potential().to_array())
     dipole=mints.ao_dipole()
     #dipole is  a list of psi4.core.Matrix objects
     # dipole[0] -> x, dipole[1] -> y, dipole[2] -> z
-    dip_mat=np.copy(dipole[direction])
+    dip_mat=tnp.copy(dipole[direction].to_array())
     H = T+V
     #internal defined functional 
 
@@ -358,11 +362,11 @@ def normal_run_init (args):
     os.rename("Dt.cube",cfnames[2])
     os.rename("Ds.cube",cfnames[3])
     #C coefficients
-    C=np.array(wfn.Ca())  
+    C=tnp.array(wfn.Ca().to_array())  
     
-    dipmo_mat = np.matmul(np.conjugate(C.T),np.matmul(dip_mat,C))
+    dipmo_mat = tnp.matmul(tnp.conjugate(C.T),tnp.matmul(dip_mat,C))
     #get a scf alpha density
-    Da = np.array(wfn.Da())
+    Da = tnp.array(wfn.Da().to_array())
     
     ################################################################
     # Get nbf for closed shell molecules
@@ -383,12 +387,13 @@ def normal_run_init (args):
         raise Exception("Estimated memory utilization (%4.2f GB) " +\
                 "exceeds numpy_memory limit of %4.2f GB." % (memory_footprint, numpy_memory))
     #Get Eri (2-electron repulsion integrals)
-    I = np.array(mints.ao_eri())
+    I = tnp.array(mints.ao_eri().to_array())
     
     #D_0 is the density in the reference molecular basis
-    D_0=np.zeros((nbf,nbf))
+    D_0_=np.zeros((nbf,nbf))
     for num in range(int(ndocc)):
-        D_0[num,num]=1.0
+        D_0_[num,num]=1.0
+    D_0=tf.convert_to_tensor(D_0_)
     #nuclear dipole for non-homonuclear molecules
     Ndip = mol.nuclear_dipole()
     Ndip_dir = Ndip[direction]
@@ -415,23 +420,23 @@ def normal_run_init (args):
         k = imp_opts['Fmax']
        
         #dip_mat is transformed to the reference MO basis
-        dip_mo=np.matmul(np.conjugate(C.T),np.matmul(dip_mat,C))
+        dip_mo=tnp.matmul(tnp.conjugate(C.T),tnp.matmul(dip_mat,C))
         if (do_weighted == 99) or (do_weighted == -1):
             dip_mo=util.dipole_selection(dip_mo,do_weighted,ndocc,occlist,virtlist,fo,debug)
-        u0 = util.exp_opmat(dip_mo,np.float_(-k))
-        Dp_init= np.matmul(u0,np.matmul(Dp_0,np.conjugate(u0.T)))
+        u0 = util.exp_opmat(dip_mo,tnp.float_(-k))
+        Dp_init= tnp.matmul(u0,tnp.matmul(Dp_0,tnp.conjugate(u0.T)))
         func_t0 = k
         #backtrasform Dp_init
-        D_init = np.matmul(C,np.matmul(Dp_init,np.conjugate(C.T)))
+        D_init = tnp.matmul(C,tnp.matmul(Dp_init,tnp.conjugate(C.T)))
         Da = D_init
         Dp_0 = Dp_init 
        
         #J0p,Exc0p,F_t0=util.get_Fock(D_ti,H,I,func,basisset)
         #if (func == 'hf'):                                  
-        #    testene = np.trace(np.matmul(D_init,(H+F_t0)))  
+        #    testene = tnp.trace(tnp.matmul(D_init,(H+F_t0)))  
         #else:                                               
-        #    testene = 2.00*np.trace(np.matmul(D_init,H))+J0p+Exc0p
-        #print('trace D(0+): %.8f' % np.trace(Dp_init).real)       
+        #    testene = 2.00*tnp.trace(tnp.matmul(D_init,H))+J0p+Exc0p
+        #print('trace D(0+): %.8f' % tnp.trace(Dp_init).real)       
         #print(testene+Nuc_rep)                                    
 
     
@@ -446,55 +451,57 @@ def normal_run_init (args):
     
     #C_inv used to backtransform D(AO)
     
-    C_inv=np.linalg.inv(C)
+#    C_inv=tnp.linalg.inv(C)
+    C_inv=tf.linalg.inv(C)
     print('Entering in the first step of propagation')
     J0,Exc0,func_t0,F_t0,fock_mid_init=util.mo_fock_mid_forwd_eval(Da,wfn.Fa(),\
             0,dt,H,I,dip_mat,C,C_inv,S,nbf,imp_opts,func,fo,basisset)
     
     #check the Fock
+    #print(type(wfn.Fa()),type(F_t0))
     if debug :
-         print('F_t0 is equal to wfn.Fa() : %s' % np.allclose(wfn.Fa(),F_t0,atol=1.0e-12))
+         print('F_t0 is equal to wfn.Fa() : %s' % tnp.allclose(tnp.asarray(wfn.Fa().to_array()),F_t0,atol=1.0e-12))
     
     #check hermicity of fock_mid_init
     
-    Ah=np.conjugate(fock_mid_init.T)
-    fo.write('Fock_mid hermitian: %s\n' % np.allclose(fock_mid_init,Ah))
+    Ah=tnp.conjugate(fock_mid_init.T)
+    fo.write('Fock_mid hermitian: %s\n' % tnp.allclose(fock_mid_init,Ah))
     
     #propagate D_t0 -->D(t0+dt)
     #
     #fock_mid_init is transformed in the MO ref basis
-    fockp_mid_init = np.matmul(np.conjugate(C.T),np.matmul(fock_mid_init,C))
+    fockp_mid_init = tnp.matmul(tnp.conjugate(C.T),tnp.matmul(fock_mid_init,C))
     
     #u=scipy.linalg.expm(-1.j*fockp_mid_init*dt)
     u = util.exp_opmat(fockp_mid_init,dt)
     
-    temp = np.matmul(Dp_0,np.conjugate(u.T))
+    temp = tnp.matmul(Dp_0,tnp.conjugate(u.T))
     
-    Dp_t1 = np.matmul(u,temp)
+    Dp_t1 = tnp.matmul(u,temp)
     
     #check u if unitary
-    test_u = np.matmul(u,np.conjugate(u.T))
-    fo.write('U is unitary :%s\n' % np.allclose(test_u,np.eye(u.shape[0])))
+    test_u = tnp.matmul(u,tnp.conjugate(u.T))
+    fo.write('U is unitary :%s\n' % tnp.allclose(test_u,tnp.eye(u.shape[0])))
     
-    fock_mid_backwd = np.copy(fock_mid_init)
+    fock_mid_backwd = tnp.copy(fock_mid_init)
     
     #backtrasform Dp_t1
     
-    D_t1=np.matmul(C,np.matmul(Dp_t1,np.conjugate(C.T)))
+    D_t1=tnp.matmul(C,tnp.matmul(Dp_t1,tnp.conjugate(C.T)))
     
     if (func == 'hf'):
-        ene_list.append(np.trace(np.matmul(Da,(H+F_t0))))
+        ene_list.append(tnp.trace(tnp.matmul(Da,(H+F_t0))))
     else:    
-        ene_list.append(2.00*np.trace(np.matmul(Da,H))+J0+Exc0-np.trace(np.matmul(Da,(func_t0*dip_mat))))
+        ene_list.append(2.00*tnp.trace(tnp.matmul(Da,H))+J0+Exc0-tnp.trace(tnp.matmul(Da,(func_t0*dip_mat))))
     
-    dip_list.append(np.trace(np.matmul(Da,dip_mat)))
+    dip_list.append(tnp.trace(tnp.matmul(Da,dip_mat)))
     
     #weighted dipole
     if (do_weighted == -2):
         res = util.dipoleanalysis(dipmo_mat,Dp_0,ndocc,occlist,virtlist,debug,HL)
         weighted_dip.append(res)
     
-    fock_mid_backwd=np.copy(fock_mid_init) #prepare the fock at the previous midpint
+    fock_mid_backwd=tnp.copy(fock_mid_init) #prepare the fock at the previous midpint
     D_ti=D_t1
     Dp_ti=Dp_t1
     Enuc_list.append(-func_t0*Ndip_dir+Nuc_rep) #just in case of non-zero nuclear dipole
@@ -502,11 +509,11 @@ def normal_run_init (args):
     imp_list.append(func_t0)
     if debug :  
         #trace of D_t1
-        fo.write('%.8f\n' % np.trace(Dp_ti).real)
-        fo.write('Trace of DS %.8f\n' % np.trace(np.matmul(S,D_ti)).real)
-        fo.write('Trace of SD.real %.14f\n' % np.trace(np.matmul(S,D_ti.real)))
-        fo.write('Trace of SD.imag %.14f\n' % np.trace(np.matmul(S,D_ti.imag)))
-        fo.write('Dipole %.8f %.15f\n' % (0.000, 2.00*dip_list[0].real))
+        fo.write('%.8f\n' % tf.math.real(tnp.trace(Dp_ti)))
+        fo.write('Trace of DS %.8f\n' % tnp.trace(tf.math.real(tnp.matmul(S,D_ti))))
+        fo.write('Trace of SD.real %.14f\n' % tnp.trace(tnp.matmul(S,tf.math.real(D_ti))))
+        fo.write('Trace of SD.imag %.14f\n' % tnp.trace(tnp.matmul(S,tf.math.imag(D_ti))))
+        fo.write('Dipole %.8f %.15f\n' % (0.000, 2.00*tf.math.real(dip_list[0])))
         
     return D_ti, fock_mid_backwd, dt, H, I, dip_mat, C, C_inv, S, nbf, \
             imp_opts, func, fo, basisset, Dp_ti, weighted_dip, dip_list, \
@@ -612,27 +619,27 @@ def restart_init (args):
     time_int = calc_params_new['time_int']
     niter = int(time_int/dt)
 
-    dipmo_mat = np.asarray(json_data["dipmo_mat"])
-    H = np.asarray(json_data["H"])
-    I = np.asarray(json_data["I"])
-    dip_mat = np.asarray(json_data["dip_mat"])
-    C = np.asarray(json_data["C"])
-    C_inv = np.asarray(json_data["C_inv"])
-    S = np.asarray(json_data["S"])
+    dipmo_mat = tnp.asarray(json_data["dipmo_mat"])
+    H = tnp.asarray(json_data["H"])
+    I = tnp.asarray(json_data["I"])
+    dip_mat = tnp.asarray(json_data["dip_mat"])
+    C = tnp.asarray(json_data["C"])
+    C_inv = tnp.asarray(json_data["C_inv"])
+    S = tnp.asarray(json_data["S"])
 
-    ene_list = vctto_npcmplxarray (json_data["ene_list_REAL"], \
+    ene_list = vctto_tnpcmplxarray (json_data["ene_list_REAL"], \
             json_data["ene_list_IMAG"])
-    dip_list = vctto_npcmplxarray (json_data["dip_list_REAL"], \
+    dip_list = vctto_tnpcmplxarray (json_data["dip_list_REAL"], \
             json_data["dip_list_IMAG"])
 
-    weighted_dip = mtxto_npcmplxarray (json_data["weighted_dip_REAL"], \
+    weighted_dip = mtxto_tnpcmplxarray (json_data["weighted_dip_REAL"], \
             json_data["weighted_dip_IMAG"])
 
-    D_ti = np.array(mtxto_npcmplxarray (json_data["D_ti_REAL"], \
+    D_ti = tnp.array(mtxto_tnpcmplxarray (json_data["D_ti_REAL"], \
             json_data["D_ti_IMAG"]))
-    Dp_ti = np.array(mtxto_npcmplxarray (json_data["Dp_ti_REAL"], \
+    Dp_ti = tnp.array(mtxto_tnpcmplxarray (json_data["Dp_ti_REAL"], \
             json_data["Dp_ti_IMAG"]))
-    fock_mid_backwd = np.array(mtxto_npcmplxarray (json_data["fock_mid_backwd_REAL"], \
+    fock_mid_backwd = tnp.array(mtxto_tnpcmplxarray (json_data["fock_mid_backwd_REAL"], \
             json_data["fock_mid_backwd_IMAG"]))
 
     cfnames = args.cubefilenames.split(";")
@@ -651,7 +658,7 @@ def restart_init (args):
         exit(1)
 
     if "extpot_REAL" in json_data and "extpot_IMAG" in json_data:
-        extpot = np.array(mtxto_npcmplxarray (json_data["extpot_REAL"], \
+        extpot = tnp.array(mtxto_tnpcmplxarray (json_data["extpot_REAL"], \
                 json_data["extpot_IMAG"]))
  
     fo = open(dbgfnames[0], "w")
@@ -811,7 +818,6 @@ if __name__ == "__main__":
 
     start = time.time()
     cstart = time.process_time()
-    astart = time.perf_counter()
 
     print("Start main iterations \n")
     dumpcounter = 0
@@ -839,8 +845,25 @@ if __name__ == "__main__":
                     psi4options, geom, do_weighted, Enuc_list, \
                     imp_params, calc_params, Ndip_dir, Nuc_rep, extpot)
 
+            new_json_data = {}
+            for key, value in json_data.items():
+                if isinstance(value, (float, int, str)):
+                    new_json_data[key] = value
+                elif isinstance(value, complex):
+                    new_json_data[key] = float(value.real)
+                elif isinstance(value, dict):
+                    new_json_data[key] = {}
+                    for subkey, subvalue in value.items():
+                        if isinstance(subvalue, (float, int, str)):
+                            new_json_data[key][subkey] = subvalue
+                        elif isinstance(subvalue, complex):
+                            new_json_data[key][subkey] = float(subvalue.real)
+                        else:
+                            None
+                else:
+                    None 
             with open(args.restartfile, 'w') as fp:
-                json.dump(json_data, fp, sort_keys=True, indent=4)
+                json.dump(new_json_data, fp, sort_keys=True, indent=4)
 
             dumpcounter = 0
 
@@ -854,17 +877,16 @@ if __name__ == "__main__":
     fo.close()
     end = time.time()
     cend = time.process_time()
-    aend = time.perf_counter()
-    print("Time for %10d time iterations : (%.5f s, %.5f s, %.5f s)\n" %(niter+1,end-start,cend-cstart,aend-astart))
-    t_point=np.linspace(0.0,niter*dt,niter+1)
-    dip_t=2.00*np.array(dip_list).real + Ndip_dir
-    ene_t=np.array(ene_list).real + Nuc_rep
-    imp_t=np.array(imp_list)
+    print("Time for %10d time iterations : (%.5f s, %.5f s)\n" %(niter+1,end-start,cend-cstart))
+    t_point=tnp.linspace(0.0,niter*dt,niter+1)
+    dip_t=2.00*tf.math.real(tnp.array(dip_list)) + Ndip_dir
+    ene_t=tf.math.real(tnp.array(ene_list)) + Nuc_rep
+    imp_t=tnp.array(imp_list)
 
     print("Dumping output files")
     if (do_weighted == -2):
-        wd_dip=2.00*np.array(weighted_dip).real
-        np.savetxt(outfnames[3], np.c_[t_point,wd_dip], \
+        wd_dip=2.00*tf.math.real(tnp.array(weighted_dip))
+        np.savetxt(outfnames[3], np.c_[t_point,wd_dip].numpy(), \
                 fmt='%.12e')
     
     np.savetxt(outfnames[0], np.c_[t_point,dip_t], fmt='%.12e')
@@ -872,6 +894,6 @@ if __name__ == "__main__":
     np.savetxt(outfnames[2], np.c_[t_point,ene_t], fmt='%.12e')
 
     if not args.restart:
-        wfn.Da().copy(psi4.core.Matrix.from_array(D_ti.real))
-        wfn.Db().copy(psi4.core.Matrix.from_array(D_ti.real))
+        wfn.Da().copy(psi4.core.Matrix.from_array(tf.math.real(D_ti)))
+        wfn.Db().copy(psi4.core.Matrix.from_array(tf.math.real(D_ti)))
         psi4.cubeprop(wfn)

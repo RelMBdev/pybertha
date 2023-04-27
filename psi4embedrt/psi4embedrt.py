@@ -27,6 +27,12 @@ import os.path
 #sys.path.append(os.environ['PYBERTHAROOT']+"/src")
 #sys.path.append(os.environ['RTHOME'])
 
+import tensorflow as tf
+from tensorflow.python.ops.numpy_ops import np_config
+np_config.enable_numpy_behavior()
+import tensorflow.experimental.numpy as tnp
+print('Num GPUs Available: ', len(tf.config.list_physical_devices('GPU')))
+
 sys.path.append(os.environ['PYBERTHA_MOD_PATH'])
 
 import psi4
@@ -69,7 +75,9 @@ def init_stdout_redirect ():
 
 ########################################################################################################
 
+
 def finalize_stdout_redirect (fname, writef=False):
+
 
     global stdout_fileno 
     global stdout_save 
@@ -106,6 +114,13 @@ def scfiterations (args, maxiter, jk, H, Cocc, func, wfn, D, vemb, E, Eold, \
             jk.C_left_add(Cocc)
             jk.compute()
             jk.C_clear()
+            # add a potential from a static field
+            if args.static_field:
+                fmax = args.fmax 
+                fdir = args.fdir
+                H.axpy(-fmax,dipole[fdir])
+                print("fdir = %4.16f "%(fdir))
+                print("fmax = %4.16f "%(fmax))
        
             # Build Fock matrix
             F = H.clone()
@@ -134,6 +149,7 @@ def scfiterations (args, maxiter, jk, H, Cocc, func, wfn, D, vemb, E, Eold, \
             ####### 
             F.axpy(1.0, V)
             F.axpy(1.0, vemb)
+
             twoel = 2.00*np.trace(np.matmul(np.array(D),np.array(jk.J()[0])))
             # DIIS error build and update
             diis_e = psi4.core.Matrix.triplet(F, D, S, False, False, False)
@@ -166,7 +182,7 @@ def scfiterations (args, maxiter, jk, H, Cocc, func, wfn, D, vemb, E, Eold, \
             F = psi4.core.Matrix.from_array(diis.extrapolate())
        
             # Diagonalize Fock matrix
-            C, Cocc, D = build_orbitals(F)
+            orbene, C, Cocc, D = build_orbitals(F)
        
             if SCF_ITER == maxiter:
                 psi4.core.clean()
@@ -238,7 +254,7 @@ def scfiterations (args, maxiter, jk, H, Cocc, func, wfn, D, vemb, E, Eold, \
              break # for args.fde = False, quit the outer loop of splitSCF scheme
     #end outer loop
 
-    return D, C, Cocc, F, SCF_E, twoel, Exc
+    return D, C, Cocc, F, SCF_E, twoel, Exc, orbene
 
     # Diagonalize routine
 
@@ -259,7 +275,7 @@ def build_orbitals(diag):
     
     D = psi4.core.Matrix.doublet(Cocc, Cocc, False, True)
       
-    return C, Cocc, D
+    return eigvals, C, Cocc, D
 
 ########################################################################################################
 
@@ -270,6 +286,8 @@ if __name__ == "__main__":
             type=str, default="geomA.xyz")
     parser.add_argument("-gB","--geom_env", help="Specify geometry file for environment", required=True, 
             type=str, default="geomB.xyz")
+    parser.add_argument("--ghostB", help="Add ghosted B atoms to geomA", 
+            required=False, action="store_true", default=False)
     parser.add_argument("-d", "--debug", help="Debug on, prints debug info to err.txt", required=False,
             default=False, action="store_true")
     parser.add_argument("--modpaths", help="set berthamod and all other modules path [\"path1;path2;...\"] (default = ../src)", 
@@ -279,6 +297,14 @@ if __name__ == "__main__":
 
     parser.add_argument("--env_obs", help="Specify the orbital basis set for the enviroment (default: AUG/ADZP)", required=False, 
             type=str, default="AUG/ADZP")
+
+    parser.add_argument("--static_field", help="Add a static field to the SCF (default : False)", required=False,
+            default=False, action="store_true")
+    parser.add_argument("--fmax", help="Static field amplitude (default : 1.0e-5)", required=False,
+            type=np.float64, default=1.0e-5)
+    parser.add_argument("--fdir", help="External field direction (cartesian)  (default: 2)",
+            required=False, type=int, default=2)
+
     parser.add_argument("--env_func", help="Specify the function for the environment density (default: BLYP)", required=False, 
             type=str, default="BLYP")
     parser.add_argument("--act_obs", help="Specify the orbital basis set for the active system (deafult: aug-cc-pvdz)", required=False, 
@@ -319,6 +345,7 @@ if __name__ == "__main__":
     #more option to be added
     
     args = parser.parse_args() #temporary
+    rt_nthreads = int(os.getenv('OMP_NUM_THREADS', 1))
 
     for path in args.modpaths.split(";"):
         sys.path.append(path)
@@ -348,8 +375,9 @@ if __name__ == "__main__":
       imp_opts, calc_params = util.set_params(args.inputfile)
       func = calc_params['func_type'] # from input.inp. default : blyp
     
-    geom, mol = fde_util.set_input(geomA, basis_set)
-    
+    geom, mol = fde_util.set_input(geomA, basis_set,geomB,args.ghostB)
+    psi4.set_num_threads(rt_nthreads)
+
     ene = None 
     wfn_scf = None
     adfoufname = "./adf.out"
@@ -489,6 +517,7 @@ if __name__ == "__main__":
     D = np.array(wfn_scf.Da())
     C0 = np.array(wfn_scf.Ca()) #unpolarized MOs - for later use
     Dref = np.copy(D)
+    Eref = ene
     mints = psi4.core.MintsHelper(wfn_scf.basisset())
     S = mints.ao_overlap()
     ndocc = wfn_scf.nalpha() 
@@ -505,7 +534,7 @@ if __name__ == "__main__":
       t = threading.Thread(target=drain_pipe)
       t.start()
 
-      phi, lpos, nbas = fde_util.phi_builder(mol,xs,ys,zs,ws,basis_set)
+      phi, lpos, nbas = fde_util.phi_builder(xs, ys, zs, ws, wfn_scf.basisset())
 
       os.close(stdout_fileno)
       t.join()
@@ -610,6 +639,7 @@ if __name__ == "__main__":
           fp.close()  
 
       print("  ADF out  " + adfoufname)
+
       print("Evaluation of the embedding potential in two steps:")
       print ("  a. getting the non-additive potential")
 
@@ -767,7 +797,7 @@ if __name__ == "__main__":
     start = time.time()
     cstart = time.process_time()
 
-    D, C, Cocc, F, SCF_E, twoel, Exc = scfiterations (args, maxiter, jk, H, Cocc, func, \
+    D, C, Cocc, F, SCF_E, twoel, Exc, orb_eigv = scfiterations (args, maxiter, jk, H, Cocc, func, \
       wfn, D, vemb, E, Eold, Fock_list, DIIS_error,  phi, agrid, densgrad, denshess, \
         isolated_elpot_enviro, E_conv, D_conv)
     
@@ -779,6 +809,15 @@ if __name__ == "__main__":
     print('Final DFT energy: %.16f hartree' % SCF_E)
     print('    twoel energy: %.16f hartree' % twoel)
     print('       xc energy: %.16f hartree' % Exc)
+    
+    print('Orbital Energies [Eh]\n')
+    print('Doubly Occupied:\n')
+    for k in range(ndocc):
+         print('%iA : %.6f' %(k+1,orb_eigv.np[k]))
+    print('Virtual:\n')
+
+    for k in range(ndocc,nbf):
+         print('%iA : %.6f'% (k+1,orb_eigv.np[k]))
 
     dipz = np.matmul(np.array(D),np.array(dipole[2]))
     dipvalz = np.trace(2.0*dipz) #+ Ndip[2]
@@ -789,15 +828,28 @@ if __name__ == "__main__":
     fout = open("emb_res.txt", "w")
     conv = 2.541765 # 1 unit of electric dipole moment (au) = 2.541765 Debye
     conv = 1.0 # for atomic units
-    fout.write('polarized dipole: %.16f, %.16f, %.16f a.u\n' %  (dipvalx*conv,dipvaly*conv,dipvalz*conv))
+    fout.write('polarized (embedding) dipole:  \n')
+    if args.static_field:
+     fout.write('External Field direction: %.16f \n' % args.fdir)
+     fout.write('External Filed strength (a.u.): %.7f \n' %args.fmax)
+    fout.write('polarized electron dipole: %.16f, %.16f, %.16f a.u\n' %  (dipvalx*conv,dipvaly*conv,dipvalz*conv))
+    fout.write('Nuclear dipole:            %.16f, %.16f, %.16f a.u\n' %  (Ndip[0]*conv,Ndip[1]*conv,Ndip[2]*conv))
+    fout.write('total dipole:              %.16f, %.16f, %.16f a.u\n' %  ((dipvalx+Ndip[0])*conv,(dipvaly+Ndip[1])*conv,(dipvalz+Ndip[2])*conv))
+    fout.write('Final DFT energy: %.16f hartree\n' % (SCF_E)) 
+
     dipz = np.matmul(np.array(Dref),np.array(dipole[2]))
     dipvalz = np.trace(2.0*dipz) #+ Ndip[2]
     dipy = np.matmul(np.array(Dref),np.array(dipole[1]))
     dipvaly = np.trace(2.0*dipy) #+ Ndip[1]
     dipx = np.matmul(np.array(Dref),np.array(dipole[0]))
     dipvalx = np.trace(2.0*dipx) #+ Ndip[0]
-    fout.write('unpolarized dipole: %.16f, %.16f, %.16f a.u\n' %  (dipvalx*conv,dipvaly*conv,dipvalz*conv))
+
+    fout.write('unpolarized (no embedding and no external field) dipole: \n')
+    fout.write('unpolarized electron dipole: %.16f, %.16f, %.16f a.u\n' %  (dipvalx*conv,dipvaly*conv,dipvalz*conv))
+    fout.write('Nuclear dipole:              %.16f, %.16f, %.16f a.u\n' %  (Ndip[0]*conv,Ndip[1]*conv,Ndip[2]*conv))
+    fout.write('total unpolarized  dipole:   %.16f, %.16f, %.16f a.u\n' %  ((dipvalx+Ndip[0])*conv,(dipvaly+Ndip[1])*conv,(dipvalz+Ndip[2])*conv))
     print("Ndip : %.8f, %.8f, %.8f\n" % (Ndip[0],Ndip[1],Ndip[2]))
+    fout.write('Final DFT energy: %.16f hartree' % (Eref)) 
     fout.close()
 
     init_stdout_redirect ()
@@ -937,7 +989,8 @@ if __name__ == "__main__":
        
        #dipz_mat is transformed to the reference MO basis
        dip_mo=np.matmul(np.conjugate(C.T),np.matmul(dipz_mat,C))
-       u0=util.exp_opmat(dip_mo,np.float_(-k))
+       dip_mo_ = tf.convert_to_tensor(dip_mo, dtype=tf.complex128)
+       u0 = util.exp_opmat(dip_mo_, np.float_(-k)).numpy()
        Dp_init= np.matmul(u0,np.matmul(Dp_0,np.conjugate(u0.T)))
        func_t0=k
        #backtrasform Dp_init
@@ -1041,10 +1094,23 @@ if __name__ == "__main__":
       vemb = np.zeros_like(D)
     
     print('Entering in the first step of propagation')
-    
-    J0,Exc0,func_t0,F_t0,fock_mid_init=util.mo_fock_mid_forwd_eval(np.array(D),F,\
-                         0,np.float_(dt),H,I,dipz_mat,C,C_inv,S,nbf,imp_opts,func,fo,basisset,vemb)
-    
+   
+    D_ = tf.convert_to_tensor(np.array(D), dtype=tf.complex128)
+    F_ = tf.convert_to_tensor(np.array(F), dtype=tf.complex128)
+    H_ = tf.convert_to_tensor(np.array(H), dtype=tf.complex128)
+    I_ = tf.convert_to_tensor(np.array(I), dtype=tf.complex128)
+    dipz_mat_ = tf.convert_to_tensor(dipz_mat, dtype=tf.complex128)
+    C_ = tf.convert_to_tensor(C, dtype=tf.complex128)
+    C_inv_ = tf.convert_to_tensor(C_inv, dtype=tf.complex128)
+    S_ = tf.convert_to_tensor(S, dtype=tf.complex128)
+    vemb_ = tf.convert_to_tensor(vemb, dtype=tf.complex128)
+
+    J0,Exc0,func_t0,F_t0,fock_mid_init=util.mo_fock_mid_forwd_eval(D_,F_,\
+                         0,np.float_(dt),H_,I_,dipz_mat_,C_,C_inv_,S_,nbf,imp_opts,func,fo,basisset,vemb_)
+    J0 = J0.numpy()
+    F_t0 = F_t0.numpy()
+    fock_mid_init = fock_mid_init.numpy()
+
     #check hermicity of fock_mid_init
     
     Ah=np.conjugate(fock_mid_init.T)
@@ -1053,10 +1119,11 @@ if __name__ == "__main__":
     #propagate D_t0 -->D(t0+dt)
     #
     #fock_mid_init is transformed in the MO ref basis
-    fockp_mid_init=np.matmul(np.conjugate(C.T),np.matmul(fock_mid_init,C))
-    
-    #u=scipy.linalg.expm(-1.j*fockp_mid_init*dt)
-    u=util.exp_opmat(fockp_mid_init,np.float_(dt))
+    fockp_mid_init=np.matmul(np.conjugate(C.T),np.matmul(fock_mid_init,C)) 
+
+
+    fockp_mid_init_=tf.convert_to_tensor(fockp_mid_init, dtype=tf.complex128)
+    u=util.exp_opmat(fockp_mid_init_, tf.cast(dt, dtype=tf.float64)).numpy()
     
     temp=np.matmul(Dp_0,np.conjugate(u.T))
     
@@ -1081,7 +1148,9 @@ if __name__ == "__main__":
     #weighted dipole
     if (do_weighted == -2):
       D_mo0 = np.matmul(C0_inv,np.matmul(D,np.conjugate(C0_inv.T)))
-      res = util.dipoleanalysis(dipz_mo0,D_mo0,ndocc,occlist,virtlist,debug,False)
+      dipz_mo0_ = tf.convert_to_tensor(dipz_mo0)
+      D_mo0_ = tf.convert_to_tensor(D_mo0)
+      res = util.dipoleanalysis(dipz_mo0_, D_mo0_, ndocc, occlist, virtlist, debug, False).numpy()
       weighted_dip.append(res)
     
     fock_mid_backwd=np.copy(fock_mid_init) #prepare the fock at the previous midpint
@@ -1150,14 +1219,30 @@ if __name__ == "__main__":
             ct_acc += cdiff
         #print("here, type(vemb) : %s\n" % type(vemb))
         #
-        J_i,Exc_i,func_ti,F_ti,fock_mid_tmp=util.mo_fock_mid_forwd_eval(np.copy(D_ti),fock_mid_backwd,\
-                               j,np.float_(dt),H,I,dipz_mat,C,C_inv,S,nbf,imp_opts,func,fo,basisset,vemb)
+        
+        D_ti_ = tf.convert_to_tensor(D_ti, dtype=tf.complex128)
+        fock_mid_backwd_ = tf.convert_to_tensor(fock_mid_backwd, dtype=tf.complex128)
+        H_ = tf.convert_to_tensor(H, dtype=tf.complex128)
+        I_ = tf.convert_to_tensor(I, dtype=tf.complex128)
+        dipz_mat_ = tf.convert_to_tensor(dipz_mat, dtype=tf.complex128)
+        C_ = tf.convert_to_tensor(C, dtype=tf.complex128)
+        C_inv_ = tf.convert_to_tensor(C_inv, dtype=tf.complex128)
+        S_ = tf.convert_to_tensor(S, dtype=tf.complex128)
+        vemb_ = tf.convert_to_tensor(vemb, dtype=tf.complex128)
+        
+        J_i,Exc_i,func_ti,F_ti,fock_mid_tmp=util.mo_fock_mid_forwd_eval(tf.identity(D_ti_),fock_mid_backwd_,\
+                               j,np.float_(dt),H_,I_,dipz_mat_,C_,C_inv_,S_,nbf,imp_opts,func,fo,basisset,vemb_) 
+        J_i = J_i.numpy()
+        F_ti = F_ti.numpy()
+        fock_mid_tmp = fock_mid_tmp.numpy()
+
         fo.write('%.8f\n' % np.trace(np.matmul(S,D_ti)).real)
         Ah=np.conjugate(fock_mid_tmp.T)
         fo.write('Fock_mid hermitian: %s\n' % np.allclose(fock_mid_tmp,Ah))
         #transform fock_mid_init in MO basis
         fockp_mid_tmp=np.matmul(np.conjugate(C.T),np.matmul(fock_mid_tmp,C))
-        u=util.exp_opmat(np.copy(fockp_mid_tmp),np.float_(dt))
+        fockp_mid_tmp_ = tf.convert_to_tensor(fockp_mid_tmp, dtype=tf.complex128)
+        u=util.exp_opmat(tf.identity(fockp_mid_tmp_),tf.cast(dt,tf.float64)).numpy()
         #u=scipy.linalg.expm(-1.0j*fockp_mid_tmp*dt)
         #check u is unitary
         test_u=np.matmul(u,np.conjugate(u.T))
@@ -1179,7 +1264,9 @@ if __name__ == "__main__":
         if (do_weighted == -2):
           #weighted dipole 
           D_ti_mo0 = np.matmul(C0_inv,np.matmul(D_ti,np.conjugate(C0_inv.T)))
-          res = util.dipoleanalysis(dipz_mo0,D_ti_mo0,ndocc,occlist,virtlist,debug,False)
+          D_ti_mo0_ = tf.convert_to_tensor(D_ti_mo0)
+          dipz_mo0_ = tf.convert_to_tensor(dipz_mo0)
+          res = util.dipoleanalysis(dipz_mo0_, D_ti_mo0_, ndocc, occlist, virtlist, debug, False).numpy()
           weighted_dip.append(res)
         #Energy expectation value at t = t_i 
         #Enuc_list.append(-func_ti*Ndip_dir+Nuc_rep) #just in case of non-zero nuclear dipole
@@ -1209,7 +1296,7 @@ if __name__ == "__main__":
     
     end_tot = time.time()
     cend_tot =time.process_time()
-    ftime.write('Cumulative time[time()] due to vemb calculation : %.3f seconds \n\n' % (t_acc))
+    ftime.write('Cumulative time[time()] due to vemb calculation : %.3f seconds \n\n' % (t_acc))                  
     ftime.write('Cumulative time[clock()] due to vemb calculation : %.3f seconds \n\n' % (ct_acc))
     ftime.write('Cumulative time[time()] due to %i iter : %.8e seconds \n\n' % ((niter),(end_tot-start_tot)))
     ftime.write('Cumulative time[clock()] due to %i iter : %.8e seconds \n\n' % ((niter),(cend_tot-cstart_tot)))
