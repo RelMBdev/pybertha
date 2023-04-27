@@ -310,6 +310,12 @@ if __name__ == "__main__":
             default=4.0, type = float)
     parser.add_argument("--inputfile", help="Set input filename, [default = input.inp]",
             default="input.inp")
+    parser.add_argument("--fde_relax", help=" FaT to start with relax environment density for RT propagation. Only grid option 2) supramolecular grid (default) is allowed", required=False,default=False,action="store_true")
+    parser.add_argument("--k_func", help="If fde_relax set the Non-Additive Kinetic Energy Functional. (default: THOMASFERMI)", required=False,type=str,default="THOMASFERMI")
+    parser.add_argument("--relax_cyc", help="If fde_relax set the Number of TaF cycles. (default: 5) ", required=False,type=int,default=5)
+    parser.add_argument("-z", "--charge", help="Charge of the Active subsystem",default=0, type = int)
+    parser.add_argument("-Z", "--charge_tot", help="Charge of the FDE system [act(A)+ env(B)]", default=0, type = int)
+
     #more option to be added
     
     args = parser.parse_args() #temporary
@@ -379,11 +385,15 @@ if __name__ == "__main__":
     
       m_active = pyadf.molecule(file_active)
       m_active.set_symmetry('NOSYM')
+      m_active.set_charge(args.charge)
+
       m_enviro = pyadf.molecule(file_enviro)
       m_enviro.set_symmetry('NOSYM')
+      m_enviro.set_charge(args.charge_tot-args.charge)
     
       m_tot = m_active + m_enviro
       m_tot.set_symmetry('NOSYM')
+      m_tot.set_charge(args.charge_tot)
       ### ### ### ### ### ### ### ### ### ### ### ### ### ### ###
       # Grid generation step
       #
@@ -546,22 +556,60 @@ if __name__ == "__main__":
       #check that grid_active and agrid should be the same
       #GridWriter.write_xyzw(grid=grid_active,filename=os.path.join("./", 'ADFGRID_H20'),add_comment=False)
       #isolated ammonia get densities and nuclear potentials
-  
-      f = io.StringIO()
-      with redirect_stdout(f):
-        isolated_dens_enviro  = r_isolated_enviro.get_density(grid=agrid, \
-          fit=False, order=2) #grid=grid_active=agrid
-        isolated_vnuc_enviro  = r_isolated_enviro.get_potential(grid=agrid, \
-          pot='nuc')
-        isolated_coul_enviro  = r_isolated_enviro.get_potential(grid=agrid, \
-          pot='coul')
-        isolated_elpot_enviro = isolated_vnuc_enviro + isolated_coul_enviro
-      
-      fp = open(adfoufname, "a")
-      fp.write(f.getvalue())
-      fp.close()
-      print("  ADF out  " + adfoufname)
 
+      ########################################################
+      ##### ADDING FDE RELAX options
+    
+
+      def set_fde_options(int_=None,str_=None):
+          relax_cyc = int_
+          tnad = str_
+         
+          fde_frz_opts = {"RELAX": ""}
+          fde_act_opts = {'FULLGRID': '', 'RELAXCYCLES': relax_cyc, 'TNAD': tnad, 'ENERGY': ''}
+         
+          return fde_frz_opts,fde_act_opts
+      
+      if args.fde_relax:
+
+          if args.grid_opts != 2:
+             raise Exception("Relax density only allowed for grid option 2")
+
+          fde_frz_opts,fde_act_opts=set_fde_options(int_=args.relax_cyc,str_=args.k_func)
+
+          f = io.StringIO()
+          with redirect_stdout(f):
+            r_isolated_active = pyadf.adfsinglepointjob(m_active, basis_env, \
+               settings=adf_settings, options=['NOSYMFIT']).run()
+            frags = [pyadf.fragment(None, [m_enviro]), \
+               pyadf.fragment(r_isolated_active, [m_active], isfrozen=True, fdeoptions=fde_frz_opts)]
+            fde_res = pyadf.adffragmentsjob(frags, basis_env, settings=adf_settings, \
+                      fde=fde_act_opts,options=['NOSYMFIT']).run()
+            isolated_dens_enviro = fde_res.get_nonfrozen_density(grid=agrid, \
+            fit=False, order=2) #density,Hessian
+            isolated_vnuc_enviro = fde_res.get_nonfrozen_potential(grid=agrid, pot='nuc')
+            isolated_coul_enviro = fde_res.get_nonfrozen_potential(grid=agrid, pot='coul')
+            isolated_elpot_enviro = isolated_vnuc_enviro + isolated_coul_enviro
+          fp = open(adfoufname, "a")
+          fp.write(f.getvalue())
+          fp.close()
+
+      else:
+          f = io.StringIO()
+          with redirect_stdout(f):
+            isolated_dens_enviro  = r_isolated_enviro.get_density(grid=agrid, \
+              fit=False, order=2) #grid=grid_active=agrid
+            isolated_vnuc_enviro  = r_isolated_enviro.get_potential(grid=agrid, \
+              pot='nuc')
+            isolated_coul_enviro  = r_isolated_enviro.get_potential(grid=agrid, \
+              pot='coul')
+            isolated_elpot_enviro = isolated_vnuc_enviro + isolated_coul_enviro
+          
+          fp = open(adfoufname, "a")
+          fp.write(f.getvalue())
+          fp.close()  
+
+      print("  ADF out  " + adfoufname)
       print("Evaluation of the embedding potential in two steps:")
       print ("  a. getting the non-additive potential")
 
