@@ -213,10 +213,13 @@ def mo_fock_mid_forwd_eval(D_ti,fock_mid_ti_backwd,i,delta_t,H,I,dipole,\
 
     extpot = extpotin
 
-
     if hasattr(extpotin, "__len__"):
-      if tf.math.reduce_all(tf.equal(extpotin, 0)):
-        extpot = 0
+      try:
+        if extpotin.all() == None:
+          extpot = 0
+      except AttributeError:
+        if tf.math.reduce_all(tf.equal(extpotin, 0)):
+          extpot = 0
     else:
       if extpotin == None:
         extpot = 0
