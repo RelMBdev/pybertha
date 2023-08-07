@@ -125,11 +125,12 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
       real, external :: walltime, cputime
 
-      logical :: filefound
+      logical :: filefound, debug
 
 #ifdef USEOMPAPI 
       character(len=255) :: evariable
       integer :: nt, io
+
 
 c      write(*,*) "Proc number: ", omp_get_num_procs()
 c      write(*,*) "Max thread Number: ", omp_get_max_threads()
@@ -151,6 +152,8 @@ c      call mkl_set_num_threads(nt)
 
       cputime11 = cputime ()
       wtime11 = walltime ()
+
+      debug = .false.
 
       if (restartmem) irun = 0
 
@@ -339,7 +342,8 @@ c          print *, "Here " , ndim, nocc
         a=0
         excfit=0.0
 
-        call dftinit_fit(excfit,igrid,expo,v,nfitt,fitcase,zz,a)
+c        call dftinit_fit(excfit,igrid,expo,v,nfitt,fitcase,zz,a)
+        call dftinit_fit_quadpregrid(excfit,igrid,expo,v,nfitt,fitcase,zz, debug)
 
         v=v+zz
 
@@ -446,7 +450,8 @@ c          print *, "Here " , ndim, nocc
 
         timetomt2 = walltime ()
         ctimetomt2 = cputime ()
-        call dftinit_fit(excfit,igrid,expo,v,nfitt,fitcase,zz,a)
+c        call dftinit_fit(excfit,igrid,expo,v,nfitt,fitcase,zz,a)
+        call dftinit_fit_quadpregrid(excfit,igrid,expo,v,nfitt,fitcase,zz, debug)
         timetomt2 = walltime () - timetomt2
         ctimetomt2 = cputime () - ctimetomt2
 
@@ -976,6 +981,9 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       real, allocatable :: pp(:)
       integer :: counter, i, j, a, rc
       integer :: npoints
+      logical :: debug
+
+      debug = .false.
 
       counter = 1
       do i = 1, ndim
@@ -1000,7 +1008,9 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       call jfitenergy(v,nfitt,efittcoul)
       a = 0
       excfit = 0.0
-      call dftinit_fit(excfit,igrid,expo,v,nfitt,fitcase,zz,a)
+c      call dftinit_fit(excfit,igrid,expo,v,nfitt,fitcase,zz,a)
+      call dftinit_fit_quadpregrid(excfit,igrid,expo,v,nfitt,fitcase,zz,debug)
+
       v = zz + v
 ! Note that this is necessary to evaluate the TOTAL energy
 
